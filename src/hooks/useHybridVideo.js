@@ -62,6 +62,7 @@ const useHybridVideo = () => {
       };
 
       const finalOptions = { ...defaultOptions, ...options };
+      
 
       // コンテンツデータの検証
       if (!contentData || !contentData.title) {

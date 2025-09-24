@@ -350,6 +350,60 @@ class HybridVideoGenerator {
     ctx.fillText('VS', config.width / 2, config.height / 2);
   }
 
+  // 🔧 修正：drawStepsメソッドを追加
+  drawSteps(format, progress) {
+    const ctx = this.contexts[format];
+    const config = this.videoConfig[format];
+    
+    // ステップ数を決定
+    const totalSteps = format === 'short' ? 3 : 5;
+    const currentStep = Math.floor(progress * totalSteps) + 1;
+    
+    // 背景パネル
+    const panelHeight = format === 'short' ? config.height * 0.3 : config.height * 0.5;
+    const panelY = (config.height - panelHeight) / 2;
+    
+    ctx.fillStyle = 'rgba(45, 55, 72, 0.9)';
+    ctx.fillRect(50, panelY, config.width - 100, panelHeight);
+    
+    ctx.strokeStyle = '#4ecdc4';
+    ctx.lineWidth = format === 'short' ? 4 : 8;
+    ctx.strokeRect(50, panelY, config.width - 100, panelHeight);
+    
+    // ステップ番号
+    ctx.fillStyle = '#4ecdc4';
+    ctx.font = format === 'short' ? 'bold 80px Arial' : 'bold 120px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`STEP ${currentStep}`, config.width / 2, config.height / 2 - 30);
+    
+    // ステップ内容
+    ctx.fillStyle = '#ffffff';
+    ctx.font = format === 'short' ? 'bold 35px Arial' : 'bold 50px Arial';
+    
+    const stepTexts = [
+      '準備をしよう',
+      '基本操作を覚える',
+      '実際にやってみる',
+      '応用テクニック',
+      '完成・まとめ'
+    ];
+    
+    const stepText = stepTexts[currentStep - 1] || `ステップ${currentStep}`;
+    ctx.fillText(stepText, config.width / 2, config.height / 2 + 40);
+    
+    // プログレスドット
+    const dotSpacing = format === 'short' ? 30 : 40;
+    const totalWidth = (totalSteps - 1) * dotSpacing;
+    const startX = config.width / 2 - totalWidth / 2;
+    
+    for (let i = 0; i < totalSteps; i++) {
+      ctx.beginPath();
+      ctx.arc(startX + i * dotSpacing, config.height / 2 + 100, 8, 0, Math.PI * 2);
+      ctx.fillStyle = i < currentStep ? '#4ecdc4' : '#333333';
+      ctx.fill();
+    }
+  }
+
   // 結論描画
   drawConclusion(format, progress) {
     const ctx = this.contexts[format];
@@ -444,6 +498,7 @@ class HybridVideoGenerator {
     } catch (error) {
       console.error('ハイブリッド生成エラー:', error);
       this.onStatusUpdate('生成エラーが発生しました');
+      throw error; // エラーを再スロー
     }
   }
 

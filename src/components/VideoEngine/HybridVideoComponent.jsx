@@ -10,6 +10,7 @@ const HybridVideoComponent = forwardRef(({ onVideoGenerated, onStatusUpdate, onP
 
   // 初期化
   useEffect(() => {
+    console.log('HybridVideoComponent がレンダリングされました');
     if (shortCanvasRef.current && mediumCanvasRef.current && !isInitialized) {
       console.log('HybridVideoComponent 初期化開始');
       
