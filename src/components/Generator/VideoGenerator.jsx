@@ -1,7 +1,7 @@
-// src/components/Generator/VideoGenerator.jsx - AI完全主導版
+// src/components/Generator/VideoGenerator.jsx - スクリプト編集機能付き修正版
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Play, Download, Zap, Smartphone, Monitor, Target, Video, Star, AlertCircle, CheckCircle } from 'lucide-react';
+import { Play, Download, Zap, Smartphone, Monitor, Target, Video, Star, AlertCircle, CheckCircle, Edit3, Save } from 'lucide-react';
 
 // AI完全主導サービス層インポート
 import openaiService from '../../services/api/openai.js';
@@ -20,6 +20,11 @@ const VideoGenerator = () => {
   const [status, setStatus] = useState('');
   const [videos, setVideos] = useState(null);
   const [error, setError] = useState(null);
+
+  // === 新機能: スクリプト編集 ===
+  const [generatedScript, setGeneratedScript] = useState(null);
+  const [isEditingScript, setIsEditingScript] = useState(false);
+  const [editableScript, setEditableScript] = useState(null);
 
   // === Canvas参照 ===
   const canvasRef = useRef(null);
@@ -81,7 +86,26 @@ const VideoGenerator = () => {
     }
   ];
 
-  // === AI完全主導生成関数 ===
+  // === スクリプト保存機能 ===
+  const handleSaveScript = useCallback(() => {
+    if (editableScript) {
+      setGeneratedScript(editableScript);
+      setIsEditingScript(false);
+      
+      // 保存後、新しいスクリプトで動画生成可能状態にする
+      console.log('✅ スクリプト保存完了:', editableScript.title);
+    }
+  }, [editableScript]);
+
+  // === 編集開始機能 ===
+  const handleStartEditing = useCallback(() => {
+    if (generatedScript) {
+      setEditableScript({ ...generatedScript });
+      setIsEditingScript(true);
+    }
+  }, [generatedScript]);
+
+  // === AI完全主導生成関数（修正版） ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -92,40 +116,53 @@ const VideoGenerator = () => {
     setError(null);
     setProgress(0);
     setTab('generating');
+    setGeneratedScript(null);
 
     try {
       const results = {};
 
       // ステップ1: ミディアム動画生成（AI完全主導）
       if (format === 'hybrid' || format === 'medium') {
-        setStatus('AI がミディアム動画を設計中...');
+        setStatus('🧠 AI がミディアム動画設計図を作成中...');
         setProgress(10);
         
-        // AIに動画設計図を作成させる
-        const mediumDesign = await openaiService.generateVideoDesign(keyword, template, 'medium', 8);
+        // 時間設定を適切に（15秒以上）
+        const mediumDesign = await openaiService.generateVideoDesign(
+          keyword, 
+          template, 
+          'medium', 
+          format === 'hybrid' ? 20 : 180 // ハイブリッドは20秒、純粋ミディアムは3分
+        );
         
-        setStatus('ミディアム動画を生成中...');
+        // 生成されたスクリプトを保存
+        setGeneratedScript(mediumDesign);
+        setTab('script');
+        
+        setStatus('📝 AI設計図完成！スクリプトを確認してください');
         setProgress(25);
         
         // Canvas初期化（AI設計図ベース）
         videoComposer.initCanvas(canvasRef, mediumDesign);
         
+        setStatus('🎬 ミディアム動画を生成中...');
+        setProgress(30);
+        
         // AI設計図に基づいて動画生成
         const mediumVideo = await videoComposer.generateVideoFromDesign(
           mediumDesign,
           (videoProgress) => {
-            setProgress(25 + (videoProgress * 0.3)); // 25-55%
+            setProgress(30 + (videoProgress * 0.25)); // 30-55%
           }
         );
 
         results.medium = {
-          title: mediumDesign.metadata.seoTitle,
+          title: mediumDesign.metadata?.seoTitle || mediumDesign.title,
           duration: `${mediumDesign.duration}秒`,
           format: `${mediumDesign.canvas.width}x${mediumDesign.canvas.height}`,
           thumbnail: '🎬',
           estimatedRevenue: 18500,
-          description: mediumDesign.metadata.description,
-          tags: mediumDesign.metadata.tags,
+          description: mediumDesign.metadata?.description || '',
+          tags: mediumDesign.metadata?.tags || [],
           videoData: mediumVideo,
           aiDesign: mediumDesign // AI設計図も保存
         };
@@ -135,13 +172,24 @@ const VideoGenerator = () => {
 
       // ステップ2: ショート動画生成（AI完全主導）
       if (format === 'hybrid' || format === 'short') {
-        setStatus('AI がショート動画を設計中...');
+        setStatus('🧠 AI がショート動画設計図を作成中...');
         setProgress(60);
         
-        // AIに動画設計図を作成させる
-        const shortDesign = await openaiService.generateVideoDesign(keyword, template, 'short', 5);
+        // 時間設定を適切に（15秒以上）
+        const shortDesign = await openaiService.generateVideoDesign(
+          keyword, 
+          template, 
+          'short', 
+          15 // 最低15秒
+        );
         
-        setStatus('ショート動画を生成中...');
+        // 生成されたスクリプトを保存（ショートのみの場合）
+        if (!generatedScript) {
+          setGeneratedScript(shortDesign);
+          setTab('script');
+        }
+        
+        setStatus('🎬 ショート動画を生成中...');
         setProgress(70);
         
         // Canvas初期化（AI設計図ベース）
@@ -161,8 +209,8 @@ const VideoGenerator = () => {
           format: `${shortDesign.canvas.width}x${shortDesign.canvas.height}`,
           thumbnail: '📱',
           estimatedRevenue: 8200,
-          description: shortDesign.metadata.description,
-          tags: shortDesign.metadata.tags,
+          description: shortDesign.metadata?.description || '',
+          tags: shortDesign.metadata?.tags || [],
           videoData: shortVideo,
           aiDesign: shortDesign // AI設計図も保存
         };
@@ -178,7 +226,7 @@ const VideoGenerator = () => {
         };
       }
 
-      setStatus('AI完全主導動画生成完了！');
+      setStatus('✅ AI完全主導動画生成完了！');
       setProgress(100);
       setVideos(results);
 
@@ -233,6 +281,9 @@ const VideoGenerator = () => {
     setStatus('');
     setVideos(null);
     setError(null);
+    setGeneratedScript(null);
+    setIsEditingScript(false);
+    setEditableScript(null);
   }, []);
 
   return (
@@ -266,6 +317,7 @@ const VideoGenerator = () => {
         <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
           {[
             { id: 'input', name: 'AI設定', icon: Target },
+            { id: 'script', name: '📝 スクリプト', icon: Edit3 },
             { id: 'generating', name: 'AI生成中', icon: Zap },
             { id: 'result', name: 'AI結果', icon: Video }
           ].map(t => (
@@ -394,6 +446,137 @@ const VideoGenerator = () => {
             <div className="text-center text-sm text-gray-400">
               ⚡ AI が 5-10秒で動画の設計図を作成し、自動で動画を生成します
             </div>
+          </div>
+        )}
+
+        {/* 📝 スクリプトタブ（新機能） */}
+        {tab === 'script' && (
+          <div className="space-y-6">
+            {!generatedScript ? (
+              <div className="bg-white/10 rounded-xl p-8 text-center">
+                <div className="text-6xl mb-4">📝</div>
+                <div className="text-xl font-bold mb-2">AI設計図がまだありません</div>
+                <div className="text-gray-400">
+                  まず「AI設定」タブでキーワードを入力し、動画生成を実行してください
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold">📝 AI生成スクリプト</h2>
+                  {!isEditingScript ? (
+                    <button
+                      onClick={handleStartEditing}
+                      className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      <span>編集</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSaveScript}
+                      className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>保存</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* タイトル */}
+                <div className="mb-6">
+                  <label className="text-sm font-bold text-gray-300 mb-2 block">動画タイトル</label>
+                  {isEditingScript ? (
+                    <input
+                      type="text"
+                      value={editableScript.title}
+                      onChange={e => setEditableScript({...editableScript, title: e.target.value})}
+                      className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-yellow-400 focus:outline-none text-white"
+                    />
+                  ) : (
+                    <div className="text-lg font-bold text-yellow-400">
+                      {generatedScript.title}
+                    </div>
+                  )}
+                </div>
+
+                {/* 動画設定 */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div>
+                    <label className="text-sm font-bold text-gray-300 mb-2 block">動画時間</label>
+                    <div className="text-blue-400">{generatedScript.duration}秒</div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-gray-300 mb-2 block">解像度</label>
+                    <div className="text-blue-400">{generatedScript.canvas.width}x{generatedScript.canvas.height}</div>
+                  </div>
+                </div>
+
+                {/* ランキング項目 */}
+                <div className="mb-6">
+                  <label className="text-sm font-bold text-gray-300 mb-4 block">ランキング項目</label>
+                  <div className="space-y-4">
+                    {generatedScript.items?.map((item, index) => (
+                      <div key={index} className="bg-white/5 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-bold text-lg text-yellow-400">#{item.rank}</div>
+                          <div className="text-green-400 font-bold">{item.price}</div>
+                        </div>
+                        {isEditingScript ? (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={editableScript.items[index]?.name || ''}
+                              onChange={e => {
+                                const newItems = [...editableScript.items];
+                                newItems[index] = {...newItems[index], name: e.target.value};
+                                setEditableScript({...editableScript, items: newItems});
+                              }}
+                              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white"
+                              placeholder="商品名"
+                            />
+                            <input
+                              type="text"
+                              value={editableScript.items[index]?.price || ''}
+                              onChange={e => {
+                                const newItems = [...editableScript.items];
+                                newItems[index] = {...newItems[index], price: e.target.value};
+                                setEditableScript({...editableScript, items: newItems});
+                              }}
+                              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white"
+                              placeholder="価格"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="font-bold text-white mb-2">{item.name}</div>
+                            <div className="text-sm text-gray-300">
+                              {item.features?.join(' / ')}
+                            </div>
+                            {item.rating && (
+                              <div className="text-sm text-yellow-400 mt-1">
+                                評価: {item.rating}/5.0
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* メタデータ */}
+                <div className="bg-white/5 rounded-lg p-4">
+                  <div className="text-sm font-bold text-gray-300 mb-2">YouTube設定</div>
+                  <div className="text-sm text-gray-400 mb-2">
+                    <strong>説明文:</strong> {generatedScript.metadata?.description}
+                  </div>
+                  <div className="text-sm text-gray-400">
+                    <strong>タグ:</strong> {generatedScript.metadata?.tags?.join(', ')}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -568,8 +751,8 @@ const VideoGenerator = () => {
                   <div className="text-sm text-gray-400">AI自動設計</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-400">5-10秒</div>
-                  <div className="text-sm text-gray-400">設計完了時間</div>
+                  <div className="text-2xl font-bold text-blue-400">15-20秒</div>
+                  <div className="text-sm text-gray-400">実際の動画時間</div>
                 </div>
               </div>
               <div className="mt-4 p-4 bg-white/10 rounded-lg">
