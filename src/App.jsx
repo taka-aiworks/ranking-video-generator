@@ -1,17 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Download, Upload, Settings, Zap, Star, TrendingUp, Video, Image, Music, Target, Clock, DollarSign, RotateCcw, ArrowRight, Smartphone, Monitor } from 'lucide-react';
+import HybridVideoComponent from './components/VideoEngine/HybridVideoComponent.jsx';
+import useHybridVideo from './hooks/useHybridVideo.js';
 
 const HybridVideoGenerator = () => {
   const [keyword, setKeyword] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('hybrid'); // hybrid, short, medium
   const [selectedTemplate, setSelectedTemplate] = useState('ranking');
   const [selectedDuration, setSelectedDuration] = useState('auto');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [generatedVideos, setGeneratedVideos] = useState(null);
-  const [currentStep, setCurrentStep] = useState('');
   const [activeTab, setActiveTab] = useState('input');
-  const canvasRef = useRef(null);
+
+  // ハイブリッド動画生成フック
+  const {
+    videoComponentRef,
+    isGenerating,
+    currentStatus,
+    progress,
+    generatedVideos,
+    error,
+    generateHybridVideos,
+    generateShortVideo,
+    generateMediumVideo,
+    downloadAllVideos,
+    getRevenueProjection,
+    getYouTubeData,
+    reset
+  } = useHybridVideo();
 
   const formats = [
     { 
@@ -85,103 +99,55 @@ const HybridVideoGenerator = () => {
     { id: 'custom', name: 'カスタム', desc: '尺を手動指定' }
   ];
 
-  const generateSteps = {
-    hybrid: [
-      'マーケット分析中...',
-      'ハイブリッド戦略策定中...',
-      'ミディアム動画構成作成中...',
-      'ショート動画抽出ポイント特定中...',
-      'コンテンツ同期生成中...',
-      'クロスプロモーション設定中...',
-      '相互リンク生成中...',
-      '最終最適化中...'
-    ],
-    short: [
-      'トレンド分析中...',
-      'バズポイント特定中...',
-      'ショート最適化中...',
-      'エフェクト適用中...',
-      'エンゲージメント最大化中...'
-    ],
-    medium: [
-      '詳細リサーチ中...',
-      '収益化対策準備中...',
-      '長尺構成作成中...',
-      'SEO最適化中...',
-      'レンダリング中...'
-    ]
-  };
-
   const generateVideo = async () => {
-    setIsGenerating(true);
-    setProgress(0);
-    setGeneratedVideos(null);
-    setActiveTab('generating');
-
-    const steps = generateSteps[selectedFormat];
-    
-    for (let i = 0; i < steps.length; i++) {
-      setCurrentStep(steps[i]);
-      setProgress((i + 1) / steps.length * 100);
-      await new Promise(resolve => setTimeout(resolve, 1200));
+    if (!keyword.trim()) {
+      alert('キーワードを入力してください');
+      return;
     }
 
-    // ハイブリッド戦略の場合は複数動画生成
-    const mockResults = selectedFormat === 'hybrid' ? {
-      medium: {
-        title: `【完全ガイド】${keyword} おすすめランキングTOP10 - 2025年最新版`,
-        duration: '5:24',
-        thumbnail: '🎬',
-        format: '16:9 (横型)',
-        description: `${keyword}を徹底比較！専門家が選ぶおすすめTOP10を詳しく解説します。\n\n🔥 ショート版もチェック → [自動リンク]\n\n▼タイムスタンプ\n0:00 イントロ\n0:30 選定基準\n1:00 TOP10発表\n...\n\n▼紹介商品\n1位: [商品名] - https://amzn.to/xxx\n2位: [商品名] - https://amzn.to/xxx`,
-        tags: ['おすすめ', keyword, 'ランキング', 'レビュー', '2025年最新', '完全ガイド'],
-        estimatedRevenue: Math.floor(Math.random() * 25000) + 15000,
-        seoScore: 92,
-        monetization: '広告収益+アフィリエイト'
-      },
-      short: {
-        title: `${keyword} TOP3をサクッと紹介！ #shorts`,
-        duration: '0:45',
-        thumbnail: '⚡',
-        format: '9:16 (縦型)',
-        description: `${keyword}のおすすめTOP3を45秒でサクッと解説！\n\n📺 詳細版はこちら → [自動リンク]\n\n#${keyword} #おすすめ #shorts`,
-        tags: ['shorts', keyword, 'おすすめ', 'サクッと', 'TOP3'],
-        estimatedRevenue: Math.floor(Math.random() * 8000) + 3000,
-        viralPotential: 89,
-        engagement: 'バズ狙い最適化'
-      },
-      crossPromotion: {
-        shortToMedium: '「詳しい比較が見たい方は概要欄のリンクから！」',
-        mediumToShort: '「サクッと知りたい方はショート版もどうぞ！」',
-        strategy: '相互送客による視聴時間最大化'
-      }
-    } : selectedFormat === 'short' ? {
-      short: {
-        title: `${keyword} おすすめTOP3 #shorts`,
-        duration: '0:50',
-        thumbnail: '⚡',
-        format: '9:16 (縦型)',
-        description: `${keyword}のおすすめを50秒でご紹介！`,
-        tags: ['shorts', keyword, 'おすすめ'],
-        estimatedRevenue: Math.floor(Math.random() * 8000) + 2000,
-        viralPotential: 85
-      }
-    } : {
-      medium: {
-        title: `【2025年版】${keyword} 完全比較ガイド`,
-        duration: '6:15',
-        thumbnail: '🎬',
-        format: '16:9 (横型)',
-        description: `${keyword}を専門家が詳しく解説します。`,
-        tags: [keyword, 'レビュー', '比較', '2025年'],
-        estimatedRevenue: Math.floor(Math.random() * 20000) + 10000,
-        seoScore: 88
-      }
+    // テストデータ生成
+    const contentData = {
+      title: `${keyword} おすすめランキング`,
+      keyword: keyword,
+      items: generateMockItems(keyword)
     };
 
-    setGeneratedVideos(mockResults);
-    setIsGenerating(false);
-    setActiveTab('result');
+    const options = {
+      template: selectedTemplate,
+      includeShort: selectedFormat === 'hybrid' || selectedFormat === 'short',
+      includeMedium: selectedFormat === 'hybrid' || selectedFormat === 'medium',
+      shortDuration: 45,
+      mediumDuration: 300
+    };
+
+    try {
+      setActiveTab('generating');
+      
+      if (selectedFormat === 'hybrid') {
+        await generateHybridVideos(contentData, options);
+      } else if (selectedFormat === 'short') {
+        await generateShortVideo(contentData, options.shortDuration);
+      } else {
+        await generateMediumVideo(contentData, options.mediumDuration);
+      }
+      
+      setActiveTab('result');
+    } catch (error) {
+      console.error('動画生成エラー:', error);
+      alert('動画生成でエラーが発生しました');
+    }
+  };
+
+  // モックアイテム生成
+  const generateMockItems = (keyword) => {
+    const items = [
+      { name: `${keyword} プレミアム`, price: 24800, rating: 4.8 },
+      { name: `${keyword} スタンダード`, price: 16800, rating: 4.5 },
+      { name: `${keyword} エコノミー`, price: 9800, rating: 4.2 },
+      { name: `${keyword} プロ`, price: 32800, rating: 4.6 },
+      { name: `${keyword} ライト`, price: 7800, rating: 4.0 }
+    ];
+    return items;
   };
 
   return (
@@ -429,7 +395,7 @@ const HybridVideoGenerator = () => {
         {activeTab === 'generating' && isGenerating && (
           <div className="max-w-4xl mx-auto">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center">
-              <div className="text-2xl font-bold mb-4">{currentStep}</div>
+              <div className="text-2xl font-bold mb-4">{currentStatus}</div>
               <div className="w-full bg-white/20 rounded-full h-4 mb-6">
                 <div 
                   className="bg-gradient-to-r from-yellow-400 to-orange-500 h-4 rounded-full transition-all duration-300"
@@ -447,8 +413,18 @@ const HybridVideoGenerator = () => {
                   : '収益化に最適なミディアム動画を生成しています...'}
               </div>
               
+              {/* ハイブリッド動画コンポーネント */}
+              <div className="mt-8">
+                <HybridVideoComponent
+                  ref={videoComponentRef}
+                  onVideoGenerated={() => {}} // フックで処理
+                  onStatusUpdate={() => {}} // フックで処理
+                  onProgress={() => {}} // フックで処理
+                />
+              </div>
+
               {selectedFormat === 'hybrid' && (
-                <div className="grid grid-cols-2 gap-6 text-left">
+                <div className="grid grid-cols-2 gap-6 text-left mt-8">
                   <div className="bg-white/10 rounded-lg p-4">
                     <div className="flex items-center space-x-2 mb-2">
                       <Monitor className="w-5 h-5 text-green-400" />
@@ -770,17 +746,47 @@ const HybridVideoGenerator = () => {
 
             {/* 次のアクション */}
             <div className="text-center space-y-4">
-              <button
-                onClick={() => {
-                  setActiveTab('input');
-                  setKeyword('');
-                  setGeneratedVideos(null);
-                }}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-3 rounded-lg font-bold transition-colors flex items-center space-x-2 mx-auto"
-              >
-                <Zap className="w-5 h-5" />
-                <span>新しい動画を生成する</span>
-              </button>
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={downloadAllVideos}
+                  disabled={!generatedVideos}
+                  className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 disabled:from-gray-600 disabled:to-gray-700 px-6 py-3 rounded-lg font-bold transition-colors flex items-center space-x-2"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>全動画ダウンロード</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setActiveTab('input');
+                    setKeyword('');
+                    reset();
+                  }}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-6 py-3 rounded-lg font-bold transition-colors flex items-center space-x-2"
+                >
+                  <Zap className="w-5 h-5" />
+                  <span>新しい動画を生成する</span>
+                </button>
+              </div>
+              
+              {/* 収益予測表示 */}
+              {(() => {
+                const revenueData = getRevenueProjection();
+                return revenueData ? (
+                  <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg p-4 border border-green-400/30">
+                    <h4 className="font-bold mb-2 text-green-400">💰 収益予測</h4>
+                    <div className="text-2xl font-bold text-green-400 mb-1">
+                      月額 ¥{revenueData.monthlyProjection.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {revenueData.strategy === 'hybrid' && `ハイブリッドボーナス: +¥${revenueData.hybridBonus.toLocaleString()}`}
+                      <br />
+                      収益化期間: {revenueData.monetizationPeriod}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+              
               <p className="text-gray-400 text-sm">
                 ハイブリッド戦略で収益を最大化し、YouTubeチャンネルを成功に導きましょう！
               </p>
