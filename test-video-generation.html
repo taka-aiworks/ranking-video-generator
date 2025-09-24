@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ランキング動画生成</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        canvas { border: 2px solid #333; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        .ranking-input { margin: 10px 0; }
+        textarea { width: 100%; height: 100px; }
+    </style>
+</head>
+<body>
+    <h1>🏆 ランキング動画生成テスト</h1>
+    
+    <div class="ranking-input">
+        <label>ランキング内容（1行1項目）:</label>
+        <textarea id="rankingInput">第5位: 笑顔を絶やさない
+第4位: 身だしなみに気を使う
+第3位: 聞き上手になる
+第2位: 優しさを見せる
+第1位: 自分を大切にする</textarea>
+    </div>
+    
+    <button id="generate15sec">15秒ランキング動画</button>
+    <button id="generate30sec">30秒ランキング動画</button>
+    <button id="generate60sec">60秒ランキング動画</button>
+    <button id="stop">停止</button>
+    
+    <div class="debug">
+        <strong>ステータス:</strong> <span id="status">待機中</span><br>
+        <strong>経過時間:</strong> <span id="time">0</span>秒<br>
+        <strong>現在の項目:</strong> <span id="currentItem">-</span><br>
+    </div>
+    
+    <canvas id="canvas" width="1920" height="1080"></canvas>
+    <video id="video" width="960" height="540" controls></video>
+
+    <script>
+        class RankingVideoGenerator {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.video = document.getElementById('video');
+                this.isRecording = false;
+                this.mediaRecorder = null;
+                this.chunks = [];
+                this.startTime = 0;
+                this.animationId = null;
+                
+                this.rankingData = [];
+                this.currentPhase = 'intro'; // intro, ranking, outro
+                this.currentItemIndex = 0;
+                this.phaseStartTime = 0;
+                
+                document.getElementById('generate15sec').onclick = () => this.startGeneration(15);
+                document.getElementById('generate30sec').onclick = () => this.startGeneration(30);
+                document.getElementById('generate60sec').onclick = () => this.startGeneration(60);
+                document.getElementById('stop').onclick = () => this.stopRecording();
+                
+                this.drawFrame();
+            }
+            
+            updateStatus(status) {
+                document.getElementById('status').textContent = status;
+            }
+            
+            updateStats(time, item) {
+                document.getElementById('time').textContent = time.toFixed(1);
+                document.getElementById('currentItem').textContent = item;
+            }
+            
+            parseRankingInput() {
+                const input = document.getElementById('rankingInput').value;
+                this.rankingData = input.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+            }
+            
+            calculateTiming(totalDuration) {
+                const introDuration = Math.min(5, totalDuration * 0.2);
+                const outroDuration = Math.min(5, totalDuration * 0.2);
+                const rankingDuration = totalDuration - introDuration - outroDuration;
+                const itemDuration = rankingDuration / this.rankingData.length;
+                
+                return { introDuration, outroDuration, rankingDuration, itemDuration };
+            }
+            
+            drawFrame() {
+                const now = this.isRecording ? (Date.now() - this.startTime) / 1000 : 0;
+                
+                // 背景描画
+                this.drawBackground();
+                
+                if (this.isRecording) {
+                    const timing = this.calculateTiming(this.recordingDuration);
+                    
+                    if (now < timing.introDuration) {
+                        // 導入部分
+                        this.currentPhase = 'intro';
+                        this.drawIntro(now / timing.introDuration);
+                        this.updateStats(now, '導入');
+                    } else if (now < this.recordingDuration - timing.outroDuration) {
+                        // ランキング部分
+                        this.currentPhase = 'ranking';
+                        const rankingTime = now - timing.introDuration;
+                        this.currentItemIndex = Math.floor(rankingTime / timing.itemDuration);
+                        const itemProgress = (rankingTime % timing.itemDuration) / timing.itemDuration;
+                        
+                        if (this.currentItemIndex < this.rankingData.length) {
+                            this.drawRankingItem(
+                                this.rankingData[this.currentItemIndex], 
+                                itemProgress,
+                                this.currentItemIndex
+                            );
+                            this.updateStats(now, this.rankingData[this.currentItemIndex]);
+                        }
+                    } else {
+                        // まとめ部分
+                        this.currentPhase = 'outro';
+                        const outroProgress = (now - (this.recordingDuration - timing.outroDuration)) / timing.outroDuration;
+                        this.drawOutro(outroProgress);
+                        this.updateStats(now, 'まとめ');
+                    }
+                    
+                    // プログレスバー
+                    this.drawProgressBar(now, this.recordingDuration);
+                } else {
+                    // 待機中の表示
+                    this.drawWaitingScreen();
+                }
+                
+                this.animationId = requestAnimationFrame(() => this.drawFrame());
+            }
+            
+            drawBackground() {
+                const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+                gradient.addColorStop(0, '#0f0f23');
+                gradient.addColorStop(0.5, '#1a1a2e');
+                gradient.addColorStop(1, '#16213e');
+                this.ctx.fillStyle = gradient;
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // デコレーション
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                this.ctx.lineWidth = 2;
+                for (let i = 0; i < 5; i++) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(
+                        Math.random() * this.canvas.width,
+                        Math.random() * this.canvas.height,
+                        50 + Math.random() * 100,
+                        0,
+                        Math.PI * 2
+                    );
+                    this.ctx.stroke();
+                }
+            }
+            
+            drawWaitingScreen() {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = 'bold 120px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('ランキング動画ジェネレーター', this.canvas.width / 2, this.canvas.height / 2);
+            }
+            
+            drawIntro(progress) {
+                const scale = 0.8 + Math.sin(progress * Math.PI * 2) * 0.2;
+                
+                this.ctx.save();
+                this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+                this.ctx.scale(scale, scale);
+                
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = 'bold 150px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('モテる行動ランキング', 0, -100);
+                
+                this.ctx.font = 'bold 100px Arial';
+                this.ctx.fillStyle = '#ff6b6b';
+                this.ctx.fillText(`TOP ${this.rankingData.length}`, 0, 50);
+                
+                this.ctx.font = '80px Arial';
+                this.ctx.fillStyle = '#4ecdc4';
+                this.ctx.fillText('発表します！', 0, 150);
+                
+                this.ctx.restore();
+            }
+            
+            drawRankingItem(item, progress, index) {
+                // 項目分離
+                const parts = item.split(':');
+                const rank = parts[0].trim();
+                const title = parts[1] ? parts[1].trim() : '';
+                
+                // 背景パネル
+                this.ctx.fillStyle = 'rgba(45, 55, 72, 0.9)';
+                this.ctx.fillRect(100, 150, this.canvas.width - 200, 700);
+                
+                this.ctx.strokeStyle = '#4ecdc4';
+                this.ctx.lineWidth = 8;
+                this.ctx.strokeRect(100, 150, this.canvas.width - 200, 700);
+                
+                // ランキング表示（アニメーション）
+                const rankScale = 1 + Math.sin(progress * Math.PI * 4) * 0.1;
+                this.ctx.save();
+                this.ctx.translate(this.canvas.width / 2, 400);
+                this.ctx.scale(rankScale, rankScale);
+                
+                this.ctx.fillStyle = '#ff6b6b';
+                this.ctx.font = 'bold 250px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(rank, 0, 0);
+                
+                this.ctx.restore();
+                
+                // タイトル
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = 'bold 100px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(title, this.canvas.width / 2, 650);
+                
+                // エフェクト
+                if (progress < 0.3) {
+                    const effectAlpha = 1 - progress * 3;
+                    this.ctx.fillStyle = `rgba(78, 205, 196, ${effectAlpha})`;
+                    this.ctx.font = '120px Arial';
+                    this.ctx.fillText('✨', this.canvas.width / 2 - 300, 400);
+                    this.ctx.fillText('✨', this.canvas.width / 2 + 300, 400);
+                }
+                
+                // 番号表示（右上）
+                this.ctx.fillStyle = '#4ecdc4';
+                this.ctx.font = '60px Arial';
+                this.ctx.textAlign = 'right';
+                this.ctx.fillText(`${index + 1}/${this.rankingData.length}`, this.canvas.width - 150, 250);
+            }
+            
+            drawOutro(progress) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = 'bold 120px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('ありがとうございました！', this.canvas.width / 2, 400);
+                
+                this.ctx.font = '80px Arial';
+                this.ctx.fillStyle = '#4ecdc4';
+                this.ctx.fillText('チャンネル登録・高評価お願いします！', this.canvas.width / 2, 520);
+                
+                // 回転ハート
+                const rotation = progress * Math.PI * 4;
+                this.ctx.save();
+                this.ctx.translate(this.canvas.width / 2, 700);
+                this.ctx.rotate(rotation);
+                this.ctx.font = '100px Arial';
+                this.ctx.fillText('❤️', 0, 0);
+                this.ctx.restore();
+            }
+            
+            drawProgressBar(currentTime, totalTime) {
+                const progress = currentTime / totalTime;
+                const barWidth = this.canvas.width * 0.8;
+                const barHeight = 20;
+                const x = (this.canvas.width - barWidth) / 2;
+                const y = this.canvas.height - 80;
+                
+                this.ctx.fillStyle = '#333333';
+                this.ctx.fillRect(x, y, barWidth, barHeight);
+                
+                this.ctx.fillStyle = '#ff6b6b';
+                this.ctx.fillRect(x, y, barWidth * progress, barHeight);
+            }
+            
+            startGeneration(duration) {
+                if (this.isRecording) return;
+                
+                this.parseRankingInput();
+                if (this.rankingData.length === 0) {
+                    alert('ランキング内容を入力してください');
+                    return;
+                }
+                
+                this.updateStatus('録画準備中...');
+                this.recordingDuration = duration;
+                this.chunks = [];
+                
+                const stream = this.canvas.captureStream(30);
+                const options = {
+                    mimeType: 'video/webm;codecs=vp8',
+                    videoBitsPerSecond: 2000000 // 2Mbps
+                };
+                
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    delete options.mimeType;
+                }
+                
+                this.mediaRecorder = new MediaRecorder(stream, options);
+                
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        this.chunks.push(event.data);
+                    }
+                };
+                
+                this.mediaRecorder.onstop = () => {
+                    const blob = new Blob(this.chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    this.video.src = url;
+                    
+                    const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+                    this.updateStatus(`完了！サイズ: ${sizeMB}MB`);
+                };
+                
+                this.mediaRecorder.start(100);
+                this.startTime = Date.now();
+                this.isRecording = true;
+                
+                this.updateStatus(`録画中... (${duration}秒)`);
+                
+                setTimeout(() => {
+                    this.stopRecording();
+                }, duration * 1000);
+            }
+            
+            stopRecording() {
+                if (!this.isRecording || !this.mediaRecorder) return;
+                
+                this.isRecording = false;
+                this.updateStatus('録画停止中...');
+                
+                if (this.mediaRecorder.state === 'recording') {
+                    this.mediaRecorder.stop();
+                }
+            }
+        }
+        
+        new RankingVideoGenerator();
+    </script>
+</body>
+</html>
