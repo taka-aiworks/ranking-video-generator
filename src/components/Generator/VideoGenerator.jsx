@@ -7,6 +7,8 @@ import { Play, Download, Zap, Smartphone, Monitor, Target, Video, Star, AlertCir
 import openaiService from '../../services/api/openai.js';
 import videoComposer from '../../services/video/videoComposer.js';
 
+import contentAnalyzer from '../../services/generators/contentAnalyzer.js';
+
 const VideoGenerator = () => {
   // === 基本状態 ===
   const [keyword, setKeyword] = useState('');
@@ -105,7 +107,7 @@ const VideoGenerator = () => {
     }
   }, [generatedScript]);
 
-  // === AI完全主導生成関数（修正版） ===
+  // === AI完全主導生成関数（時間計算修正版） ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -126,12 +128,16 @@ const VideoGenerator = () => {
         setStatus('🧠 AI がミディアム動画設計図を作成中...');
         setProgress(10);
         
-        // 時間設定を適切に（15秒以上）
+        // 🆕 AI による動画時間自動計算
+        const optimalDuration = contentAnalyzer.calculateOptimalDuration(keyword, template, format === 'hybrid' ? 'hybrid' : 'medium');
+        console.log('⏰ AI計算時間 (ミディアム):', optimalDuration + '秒');
+        
+        // AI設計図生成（計算された時間で）
         const mediumDesign = await openaiService.generateVideoDesign(
           keyword, 
           template, 
           'medium', 
-          format === 'hybrid' ? 20 : 180 // ハイブリッドは20秒、純粋ミディアムは3分
+          optimalDuration
         );
         
         // 生成されたスクリプトを保存
@@ -144,7 +150,7 @@ const VideoGenerator = () => {
         // Canvas初期化（AI設計図ベース）
         videoComposer.initCanvas(canvasRef, mediumDesign);
         
-        setStatus('🎬 ミディアム動画を生成中...');
+        setStatus(`🎬 ミディアム動画を生成中... (${optimalDuration}秒)`);
         setProgress(30);
         
         // AI設計図に基づいて動画生成
@@ -175,12 +181,16 @@ const VideoGenerator = () => {
         setStatus('🧠 AI がショート動画設計図を作成中...');
         setProgress(60);
         
-        // 時間設定を適切に（15秒以上）
+        // 🆕 AI による動画時間自動計算
+        const optimalDuration = contentAnalyzer.calculateOptimalDuration(keyword, template, 'short');
+        console.log('⏰ AI計算時間 (ショート):', optimalDuration + '秒');
+        
+        // AI設計図生成（計算された時間で）
         const shortDesign = await openaiService.generateVideoDesign(
           keyword, 
           template, 
           'short', 
-          15 // 最低15秒
+          optimalDuration
         );
         
         // 生成されたスクリプトを保存（ショートのみの場合）
@@ -189,7 +199,7 @@ const VideoGenerator = () => {
           setTab('script');
         }
         
-        setStatus('🎬 ショート動画を生成中...');
+        setStatus(`🎬 ショート動画を生成中... (${optimalDuration}秒)`);
         setProgress(70);
         
         // Canvas初期化（AI設計図ベース）

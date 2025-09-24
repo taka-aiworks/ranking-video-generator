@@ -1,6 +1,7 @@
-// src/services/video/videoComposer.js - 修正版（時間・描画改善）
+// src/services/video/videoComposer.js - 無限ループ修正版
 
 import { API_CONFIG } from '../../config/api.js';
+import loopController from './loopController.js';
 
 class VideoComposer {
   constructor() {
@@ -8,6 +9,7 @@ class VideoComposer {
     this.ctx = null;
     this.recorder = null;
     this.config = API_CONFIG.video;
+    this.isGenerating = false; // 生成状態フラグ
   }
 
   // Canvas初期化（AI設計図ベース）
@@ -36,13 +38,13 @@ class VideoComposer {
     return this.canvas;
   }
 
-  // 動画録画開始
-  startRecording() {
+  // 動画録画開始（強化版）
+  startRecording(duration) {
     if (!this.canvas) {
       throw new Error('Canvas not initialized');
     }
 
-    console.log('🔴 録画開始...');
+    console.log('🔴 録画開始...', duration + 's');
     const stream = this.canvas.captureStream(30);
     this.recorder = new MediaRecorder(stream, {
       mimeType: 'video/webm;codecs=vp9'
@@ -60,6 +62,10 @@ class VideoComposer {
 
       this.recorder.onstop = () => {
         console.log('⏹️ 録画停止、ファイル作成中...');
+        
+        // LoopControllerセッション終了
+        loopController.endSession();
+        
         const blob = new Blob(chunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
         const result = {
@@ -71,16 +77,36 @@ class VideoComposer {
         resolve(result);
       };
 
-      this.recorder.onerror = reject;
+      this.recorder.onerror = (error) => {
+        console.error('🚨 録画エラー:', error);
+        loopController.forceStop('RECORDER_ERROR');
+        reject(error);
+      };
+
+      // LoopController開始
+      loopController.startSession(duration, this.recorder, (reason) => {
+        console.error('🚨 強制停止:', reason);
+        this.isGenerating = false;
+        reject(new Error(`録画が強制停止されました: ${reason}`));
+      });
+
       this.recorder.start();
     });
   }
 
-  // 録画停止
+  // 録画停止（安全版）
   stopRecording() {
-    if (this.recorder && this.recorder.state === 'recording') {
-      console.log('⏸️ 録画停止要求');
-      this.recorder.stop();
+    if (this.recorder) {
+      console.log('⏸️ 録画停止要求 - 状態:', this.recorder.state);
+      
+      if (this.recorder.state === 'recording') {
+        this.recorder.stop();
+      } else {
+        console.warn('⚠️ 録画停止: 既に停止済みまたは無効状態');
+        loopController.endSession();
+      }
+    } else {
+      console.warn('⚠️ 録画停止: recorder が存在しません');
     }
   }
 
@@ -125,28 +151,18 @@ class VideoComposer {
     }
     
     this.ctx.restore();
-    console.log(`📝 テキスト描画: "${text}" at (${x}, ${y})`);
   }
 
   // 現在時刻に該当するシーンを取得
   getCurrentScene(scenes, currentTime) {
-    const scene = scenes.find(scene => 
+    return scenes.find(scene => 
       currentTime >= scene.startTime && currentTime < scene.endTime
     );
-    
-    if (scene) {
-      console.log(`🎬 現在のシーン: ${scene.type} (${scene.startTime}s-${scene.endTime}s)`);
-    }
-    
-    return scene;
   }
 
   // シーンレンダリング（AI設計図ベース・強化版）
   renderScene(scene, progress, videoDesign, currentTime) {
-    if (!scene) {
-      console.warn('⚠️ レンダリングするシーンがありません');
-      return;
-    }
+    if (!scene) return;
     
     const { type, content } = scene;
     
@@ -158,15 +174,12 @@ class VideoComposer {
         this.renderItemScene(content, videoDesign, currentTime);
         break;
       default:
-        console.warn(`未知のシーンタイプ: ${type}`);
         this.renderFallbackScene(content, videoDesign);
     }
   }
 
   // タイトルシーン描画（改良版）
   renderTitleScene(content, videoDesign) {
-    console.log('📝 タイトルシーン描画:', content.mainText);
-    
     // メインタイトル
     this.drawText(
       content.mainText,
@@ -193,12 +206,10 @@ class VideoComposer {
 
   // アイテムシーン描画（AI設計図対応強化版）
   renderItemScene(content, videoDesign, currentTime) {
-    console.log('🏆 アイテムシーン描画:', content);
-    
     const { rank, name, price, rating, features, colors, positions, fontSizes } = content;
     const isShort = videoDesign.canvas.width < videoDesign.canvas.height;
     
-    // デフォルト値設定（AI設計図にない場合のフォールバック）
+    // デフォルト値設定
     const defaultPositions = {
       rank: { x: this.canvas.width / 2, y: isShort ? 400 : 250 },
       name: { x: this.canvas.width / 2, y: isShort ? 500 : 350 },
@@ -220,12 +231,11 @@ class VideoComposer {
       features: '#87ceeb'
     };
     
-    // 実際の位置・サイズ・色を決定
     const pos = positions || defaultPositions;
     const sizes = fontSizes || defaultFontSizes;
     const cols = colors || defaultColors;
     
-    // ランキング番号（大きく目立たせる）
+    // ランキング番号
     if (rank) {
       // ランク背景円
       this.ctx.save();
@@ -243,34 +253,19 @@ class VideoComposer {
         sizes.rank,
         '#000000'
       );
-      console.log(`✅ ランク描画: ${rank}位`);
     }
     
-    // 商品名（強調表示）
+    // 商品名
     if (name) {
-      this.drawText(
-        name,
-        pos.name.x,
-        pos.name.y,
-        sizes.name,
-        cols.name
-      );
-      console.log(`✅ 商品名描画: ${name}`);
+      this.drawText(name, pos.name.x, pos.name.y, sizes.name, cols.name);
     }
     
-    // 価格（目立つ色で）
+    // 価格
     if (price) {
-      this.drawText(
-        price,
-        pos.price.x,
-        pos.price.y,
-        sizes.price,
-        cols.price
-      );
-      console.log(`✅ 価格描画: ${price}`);
+      this.drawText(price, pos.price.x, pos.price.y, sizes.price, cols.price);
     }
     
-    // 評価（星で表示）
+    // 評価
     if (rating) {
       const stars = '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
       this.drawText(
@@ -280,10 +275,9 @@ class VideoComposer {
         sizes.features,
         '#ffeb3b'
       );
-      console.log(`✅ 評価描画: ${rating}`);
     }
     
-    // 特徴（リスト表示）
+    // 特徴
     if (features && features.length > 0) {
       features.forEach((feature, index) => {
         this.drawText(
@@ -294,18 +288,14 @@ class VideoComposer {
           cols.features
         );
       });
-      console.log(`✅ 特徴描画: ${features.length}個`);
     }
 
-    // 動的エフェクト追加
+    // 動的エフェクト
     this.addDynamicEffects(currentTime, videoDesign);
   }
 
-  // 動的エフェクト追加（新機能）
+  // 動的エフェクト追加
   addDynamicEffects(currentTime, videoDesign) {
-    // パルス効果
-    const pulseIntensity = Math.sin(currentTime * 3) * 0.3 + 0.7;
-    
     // キラキラエフェクト
     for (let i = 0; i < 5; i++) {
       const x = Math.random() * this.canvas.width;
@@ -346,8 +336,6 @@ class VideoComposer {
 
   // フォールバックシーン描画
   renderFallbackScene(content, videoDesign) {
-    console.log('🔄 フォールバック描画');
-    
     this.drawText(
       content.name || content.mainText || 'AI設計動画',
       this.canvas.width / 2,
@@ -357,7 +345,7 @@ class VideoComposer {
     );
   }
 
-  // プログレスバー描画（汎用）
+  // プログレスバー描画
   drawProgressBar(progress, videoDesign, currentTime, duration) {
     const barWidth = videoDesign.canvas.width * 0.6;
     const barHeight = 20;
@@ -382,21 +370,41 @@ class VideoComposer {
     );
   }
 
-  // メイン生成関数（AI完全主導版・修正強化）
+  // メイン生成関数（無限ループ修正版）
   async generateVideoFromDesign(videoDesign, onProgress) {
     console.log('🚀 AI設計図による動画生成開始:', videoDesign);
     
+    // 重複生成防止
+    if (this.isGenerating) {
+      throw new Error('既に動画生成が実行中です');
+    }
+    
+    this.isGenerating = true;
+    
     try {
+      // 時間設定の検証・修正
+      const safeDuration = Math.max(Math.min(videoDesign.duration, 180), 15); // 15-180秒
+      if (safeDuration !== videoDesign.duration) {
+        console.warn(`⚠️ 動画時間を ${videoDesign.duration}s → ${safeDuration}s に調整`);
+        videoDesign.duration = safeDuration;
+      }
+      
       // 録画開始
-      const recordingPromise = this.startRecording();
+      const recordingPromise = this.startRecording(safeDuration);
       
       const startTime = Date.now();
-      const targetDuration = videoDesign.duration * 1000; // ミリ秒に変換
+      const targetDuration = safeDuration * 1000; // ミリ秒
       const scenes = videoDesign.scenes || [];
       
-      console.log(`📋 動画設定: ${videoDesign.duration}秒, シーン数: ${scenes.length}`);
+      console.log(`📋 動画設定: ${safeDuration}秒, シーン数: ${scenes.length}`);
 
       const animate = () => {
+        // セッション状態確認
+        if (!loopController.isSessionActive()) {
+          console.warn('⚠️ セッションが非アクティブのため終了');
+          return;
+        }
+        
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / targetDuration, 1);
         const currentTime = elapsed / 1000;
@@ -404,13 +412,13 @@ class VideoComposer {
         // 背景描画
         this.drawBackground(videoDesign);
 
-        // 現在時刻に該当するシーンを探して描画
+        // シーン描画
         const currentScene = this.getCurrentScene(scenes, currentTime);
         
         if (currentScene) {
           this.renderScene(currentScene, progress, videoDesign, currentTime);
         } else {
-          // シーンがない場合のフォールバック
+          // フォールバック
           this.drawText(
             videoDesign.title || 'AI設計動画',
             this.canvas.width / 2,
@@ -420,28 +428,42 @@ class VideoComposer {
           );
         }
 
-        // プログレスバー・時間表示
-        this.drawProgressBar(progress, videoDesign, currentTime, videoDesign.duration);
+        // プログレスバー
+        this.drawProgressBar(progress, videoDesign, currentTime, safeDuration);
 
         // プログレス通知
         if (onProgress) {
           onProgress(Math.floor(progress * 100));
         }
 
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          console.log('🏁 アニメーション完了、録画停止');
-          setTimeout(() => this.stopRecording(), 500);
+        // 終了条件確認（修正版）
+        if (progress >= 1 || currentTime >= safeDuration) {
+          console.log('🏁 アニメーション完了');
+          // 少し待ってから録画停止（最後のフレームを確実に記録）
+          setTimeout(() => {
+            this.stopRecording();
+          }, 200);
+          return;
         }
+
+        // 次のフレーム
+        const animationId = requestAnimationFrame(animate);
+        loopController.registerAnimation(animationId);
       };
 
       animate();
       return recordingPromise;
 
     } catch (error) {
-      console.error('AI主導動画生成エラー:', error);
+      console.error('🚨 AI主導動画生成エラー:', error);
+      this.isGenerating = false;
+      loopController.forceStop('GENERATION_ERROR');
       throw error;
+    } finally {
+      // 必ず実行される後処理
+      setTimeout(() => {
+        this.isGenerating = false;
+      }, 1000);
     }
   }
 
@@ -449,10 +471,12 @@ class VideoComposer {
   async generateVideo(contentData, template, duration, format, onProgress) {
     console.log('⚠️ 後方互換性関数が呼ばれました。AI設計図版を推奨します。');
     
-    // 旧形式を新形式に変換（簡易版）
+    // 旧形式を新形式に変換
+    const safeDuration = Math.max(Math.min(duration, 180), 15);
+    
     const videoDesign = {
       title: contentData.title || `${template} 動画`,
-      duration: Math.max(duration, 15), // 最低15秒保証
+      duration: safeDuration,
       canvas: {
         width: format === 'short' ? 1080 : 1920,
         height: format === 'short' ? 1920 : 1080,
@@ -461,7 +485,7 @@ class VideoComposer {
       scenes: [
         {
           startTime: 0,
-          endTime: Math.max(duration, 15),
+          endTime: safeDuration,
           type: 'item',
           content: {
             name: contentData.title || `${template} 動画`,
