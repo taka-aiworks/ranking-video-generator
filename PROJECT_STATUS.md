@@ -599,3 +599,165 @@ const hybridStrategy = {
 - ✅ **システム統合**: ChatGPT + Canvas + UI の完全統合
 - ✅ **実用レベル**: エンドツーエンドの動画生成ワークフロー完成
 - 🎯 **次期目標**: 長尺動画対応・Amazon API統合・UI/UX向上
+
+
+
+# Git設定・操作コマンド集
+
+## 初回設定（一度だけ実行）
+
+### Git ユーザー設定
+```bash
+# GitHubのメールアドレスとユーザー名を設定
+git config --global user.email "your-email@gmail.com"
+git config --global user.name "taka-aiworks"
+
+# プライバシー重視の場合（noreplyアドレス）
+git config --global user.email "taka-aiworks@users.noreply.github.com"
+
+# 設定確認
+git config --list
+```
+
+## 日常的なGit操作
+
+### 基本的なワークフロー
+```bash
+# 1. 現在の状況確認
+git status
+
+# 2. 変更をステージング
+git add .
+
+# 3. コミット
+git commit -m "機能追加: ○○を実装"
+
+# 4. GitHubに送信
+git push origin main
+```
+
+### コミットメッセージの例
+```bash
+git commit -m "feat: キーワード入力機能追加"
+git commit -m "fix: 動画生成エラー修正"
+git commit -m "update: UIデザイン改善"
+git commit -m "docs: README更新"
+```
+
+## トラブルシューティング
+
+### よくあるエラーと対処法
+
+#### 1. Author identity unknown エラー
+```bash
+# エラーメッセージが出た場合
+git config --global user.email "your-email@gmail.com"
+git config --global user.name "taka-aiworks"
+```
+
+#### 2. APIキー関連のプッシュエラー
+```bash
+# .gitignore に .env を追加
+echo ".env" >> .gitignore
+git add .gitignore
+git commit -m "add .env to .gitignore"
+
+# またはGitHubで一時的に許可（個人開発の場合）
+# Push Protection画面のURLをクリックして「Allow secret」
+```
+
+#### 3. コミット履歴の確認
+```bash
+# 最新5件のコミット履歴
+git log --oneline -5
+
+# リモートとの差分確認
+git log origin/main..HEAD --oneline
+```
+
+#### 4. 変更を取り消したい場合
+```bash
+# ステージングを取り消す
+git restore --staged <ファイル名>
+
+# ローカル変更を取り消す
+git restore <ファイル名>
+
+# 最新コミットを取り消す（注意して使用）
+git reset --soft HEAD~1
+```
+
+## GitHub連携の確認
+
+### リモートリポジトリの確認
+```bash
+# 接続先確認
+git remote -v
+
+# ブランチ確認
+git branch -a
+
+# 同期状況確認
+git status
+```
+
+### GitHub画面での確認ポイント
+1. **Commits ページ**: 最新コミットが表示されているか
+2. **ブランチ選択**: 「main」が選択されているか
+3. **ファイル更新**: 編集したファイルの内容が反映されているか
+
+## 環境変数・セキュリティ管理
+
+### .env ファイル管理
+```bash
+# .env.example（テンプレート）作成
+echo "VITE_OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxx" > .env.example
+git add .env.example
+git commit -m "add environment template"
+
+# .gitignore で .env を除外（重要）
+echo ".env" >> .gitignore
+```
+
+### API キーの正しい管理
+- ✅ `.env` ファイル: ローカル環境でのみ使用
+- ✅ `.env.example`: GitHub に保存（テンプレート）
+- ❌ コード内に直接記載: 絶対NG
+
+## コミット頻度の目安
+
+### 推奨タイミング
+- **機能追加完了時**: 新しい機能が動作確認できた
+- **バグ修正完了時**: エラーが解決した
+- **作業区切り**: 今日の作業終了時
+- **実験前**: 動作する状態をバックアップ
+
+### メッセージの書き方
+```bash
+# Good Examples
+git commit -m "feat: ランキング動画生成機能実装"
+git commit -m "fix: Canvas描画エラー修正"
+git commit -m "update: レスポンシブデザイン改善"
+git commit -m "refactor: コンポーネント分離・整理"
+
+# 日本語でもOK
+git commit -m "キーワード入力UI改善"
+git commit -m "APIエラーハンドリング追加"
+```
+
+## ローカル開発サーバー
+
+### 開発環境起動
+```bash
+# プロジェクトフォルダで実行
+npm install  # 初回のみ
+npm run dev  # 開発サーバー起動
+```
+
+### アクセス先
+- **開発サーバー**: http://localhost:5173/
+- **自動リロード**: ファイル保存で自動更新
+
+---
+
+**重要**: Git操作は「保存」の概念です。こまめにコミット・プッシュすることで、作業の安全性と継続性を確保できます。
