@@ -1,4 +1,4 @@
-// src/services/video/videoComposer.js - 動画合成エンジン
+// src/services/video/videoComposer.js - AI設計図対応版（デバッグ強化）
 
 import { API_CONFIG } from '../../config/api.js';
 
@@ -10,16 +10,28 @@ class VideoComposer {
     this.config = API_CONFIG.video;
   }
 
-  // Canvas初期化
-  initCanvas(canvasRef) {
+  // Canvas初期化（AI設計図ベース）
+  initCanvas(canvasRef, videoDesign) {
+    console.log('🎬 Canvas初期化開始:', videoDesign?.canvas);
+    
     this.canvas = canvasRef.current;
     if (!this.canvas) {
       throw new Error('Canvas reference not found');
     }
     
     this.ctx = this.canvas.getContext('2d');
-    this.canvas.width = this.config.canvas.width;
-    this.canvas.height = this.config.canvas.height;
+    
+    // AI設計図からCanvas サイズを設定
+    if (videoDesign?.canvas) {
+      this.canvas.width = videoDesign.canvas.width;
+      this.canvas.height = videoDesign.canvas.height;
+      console.log(`✅ Canvas サイズ設定: ${this.canvas.width}x${this.canvas.height}`);
+    } else {
+      // フォールバック
+      this.canvas.width = 1920;
+      this.canvas.height = 1080;
+      console.warn('⚠️ AI設計図からサイズを取得できないため、デフォルト使用');
+    }
     
     return this.canvas;
   }
@@ -30,10 +42,10 @@ class VideoComposer {
       throw new Error('Canvas not initialized');
     }
 
-    const stream = this.canvas.captureStream(this.config.canvas.frameRate);
+    console.log('🔴 録画開始...');
+    const stream = this.canvas.captureStream(30);
     this.recorder = new MediaRecorder(stream, {
-      mimeType: this.config.recorder.mimeType,
-      videoBitsPerSecond: this.config.recorder.videoBitsPerSecond
+      mimeType: 'video/webm;codecs=vp9'
     });
 
     return new Promise((resolve, reject) => {
@@ -42,17 +54,21 @@ class VideoComposer {
       this.recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
+          console.log(`📦 データチャンク追加: ${event.data.size} bytes`);
         }
       };
 
       this.recorder.onstop = () => {
+        console.log('⏹️ 録画停止、ファイル作成中...');
         const blob = new Blob(chunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
-        resolve({
+        const result = {
           blob,
           url,
           size: (blob.size / (1024 * 1024)).toFixed(2) + 'MB'
-        });
+        };
+        console.log('✅ 動画ファイル作成完了:', result.size);
+        resolve(result);
       };
 
       this.recorder.onerror = reject;
@@ -63,60 +79,222 @@ class VideoComposer {
   // 録画停止
   stopRecording() {
     if (this.recorder && this.recorder.state === 'recording') {
+      console.log('⏸️ 録画停止要求');
       this.recorder.stop();
     }
   }
 
-  // 背景描画
-  drawBackground(template) {
-    const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, this.canvas.height);
+  // AI設計図に基づく背景描画
+  drawBackground(videoDesign) {
+    const bgColor = videoDesign.canvas?.backgroundColor || '#1e3a8a,#7c3aed,#db2777';
+    const colors = bgColor.split(',');
     
-    const gradients = {
-      ranking: ['#1e3a8a', '#7c3aed', '#db2777'],
-      comparison: ['#1e40af', '#059669', '#dc2626'], 
-      tutorial: ['#065f46', '#059669', '#10b981'],
-      news: ['#7c2d12', '#dc2626', '#f59e0b']
-    };
-
-    const colors = gradients[template] || gradients.ranking;
-    colors.forEach((color, index) => {
-      gradient.addColorStop(index / (colors.length - 1), color);
-    });
-
-    this.ctx.fillStyle = gradient;
+    if (colors.length > 1) {
+      // グラデーション背景
+      const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, this.canvas.height);
+      colors.forEach((color, index) => {
+        gradient.addColorStop(index / (colors.length - 1), color.trim());
+      });
+      this.ctx.fillStyle = gradient;
+    } else {
+      // 単色背景
+      this.ctx.fillStyle = colors[0].trim();
+    }
+    
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  // テキスト描画
-  drawText(text, x, y, options = {}) {
-    const defaults = {
-      font: 'Arial',
-      size: 40,
-      weight: 'normal',
-      color: '#ffffff',
-      align: 'center',
-      maxWidth: this.canvas.width - 200
-    };
-
-    const opts = { ...defaults, ...options };
+  // 汎用テキスト描画（AI設計図ベース）
+  drawText(text, x, y, fontSize, color, fontFamily = 'Arial', align = 'center', maxWidth = null) {
+    this.ctx.fillStyle = color;
+    this.ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    this.ctx.textAlign = align;
     
-    this.ctx.fillStyle = opts.color;
-    this.ctx.font = `${opts.weight} ${opts.size}px ${opts.font}`;
-    this.ctx.textAlign = opts.align;
-    
-    // 文字幅制限対応
-    if (opts.maxWidth) {
-      this.ctx.fillText(text, x, y, opts.maxWidth);
+    if (maxWidth) {
+      this.ctx.fillText(text, x, y, maxWidth);
     } else {
       this.ctx.fillText(text, x, y);
     }
   }
 
-  // プログレスバー描画
-  drawProgressBar(progress, y = 700) {
-    const barWidth = this.canvas.width - 400;
+  // 現在時刻に該当するシーンを取得
+  getCurrentScene(scenes, currentTime) {
+    const scene = scenes.find(scene => 
+      currentTime >= scene.startTime && currentTime < scene.endTime
+    );
+    
+    if (!scene) {
+      console.warn(`⚠️ 時刻 ${currentTime}s に該当するシーンが見つかりません`);
+    }
+    
+    return scene;
+  }
+
+  // シーンレンダリング（AI設計図ベース・強化版）
+  renderScene(scene, progress, videoDesign) {
+    if (!scene) {
+      console.warn('⚠️ レンダリングするシーンがありません');
+      return;
+    }
+    
+    const { type, content } = scene;
+    console.log(`🎨 シーンレンダリング: ${type}`, content);
+    
+    switch (type) {
+      case 'title':
+        this.renderTitleScene(content);
+        break;
+      case 'item':
+        this.renderItemScene(content, videoDesign);
+        break;
+      default:
+        console.warn(`未知のシーンタイプ: ${type}`);
+        // フォールバック描画
+        this.renderFallbackScene(content, videoDesign);
+    }
+  }
+
+  // タイトルシーン描画
+  renderTitleScene(content) {
+    console.log('📝 タイトルシーン描画:', content.mainText);
+    
+    this.drawText(
+      content.mainText,
+      content.position?.x || this.canvas.width / 2,
+      content.position?.y || 200,
+      content.fontSize || 70,
+      content.fontColor || '#ffffff'
+    );
+    
+    // サブテキストがあれば描画
+    if (content.subText) {
+      this.drawText(
+        content.subText,
+        content.position?.x || this.canvas.width / 2,
+        (content.position?.y || 200) + (content.fontSize || 70) + 20,
+        (content.fontSize || 70) * 0.6,
+        content.fontColor || '#ffffff'
+      );
+    }
+  }
+
+  // アイテムシーン描画（AI設計図対応強化版）
+  renderItemScene(content, videoDesign) {
+    console.log('🏆 アイテムシーン描画:', content);
+    
+    const { rank, name, price, rating, features, colors, positions, fontSizes } = content;
+    const isShort = videoDesign.canvas.width < videoDesign.canvas.height;
+    
+    // デフォルト値設定（AI設計図にない場合のフォールバック）
+    const defaultPositions = {
+      rank: { x: this.canvas.width / 2, y: isShort ? 500 : 350 },
+      name: { x: this.canvas.width / 2, y: isShort ? 600 : 450 },
+      price: { x: this.canvas.width / 2, y: isShort ? 650 : 500 },
+      features: { x: this.canvas.width / 2, y: isShort ? 700 : 550 }
+    };
+    
+    const defaultFontSizes = {
+      rank: isShort ? 80 : 120,
+      name: isShort ? 35 : 50,
+      price: isShort ? 28 : 40,
+      features: isShort ? 20 : 28
+    };
+    
+    const defaultColors = {
+      rank: '#fbbf24',
+      name: '#ffffff',
+      price: '#10b981',
+      features: '#10b981'
+    };
+    
+    // 実際の位置・サイズ・色を決定
+    const pos = positions || defaultPositions;
+    const sizes = fontSizes || defaultFontSizes;
+    const cols = colors || defaultColors;
+    
+    // ランキング番号
+    if (rank) {
+      this.drawText(
+        `#${rank}`,
+        pos.rank.x,
+        pos.rank.y,
+        sizes.rank,
+        cols.rank
+      );
+      console.log(`✅ ランク描画: #${rank}`);
+    }
+    
+    // 商品名
+    if (name) {
+      this.drawText(
+        name,
+        pos.name.x,
+        pos.name.y,
+        sizes.name,
+        cols.name
+      );
+      console.log(`✅ 商品名描画: ${name}`);
+    }
+    
+    // 価格
+    if (price) {
+      this.drawText(
+        price,
+        pos.price.x,
+        pos.price.y,
+        sizes.price,
+        cols.price
+      );
+      console.log(`✅ 価格描画: ${price}`);
+    }
+    
+    // 評価（星）
+    if (rating) {
+      const stars = '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
+      this.drawText(
+        `${stars} ${rating.toFixed(1)}`,
+        pos.price.x,
+        pos.price.y + 50,
+        sizes.features,
+        cols.features
+      );
+      console.log(`✅ 評価描画: ${rating}`);
+    }
+    
+    // 特徴
+    if (features && features.length > 0) {
+      features.forEach((feature, index) => {
+        this.drawText(
+          `✓ ${feature}`,
+          pos.features.x,
+          pos.features.y + (index * 40),
+          sizes.features,
+          cols.features
+        );
+      });
+      console.log(`✅ 特徴描画: ${features.length}個`);
+    }
+  }
+
+  // フォールバックシーン描画
+  renderFallbackScene(content, videoDesign) {
+    console.log('🔄 フォールバック描画');
+    
+    this.drawText(
+      content.name || content.mainText || 'AI設計動画',
+      this.canvas.width / 2,
+      this.canvas.height / 2,
+      60,
+      '#ffffff'
+    );
+  }
+
+  // プログレスバー描画（汎用）
+  drawProgressBar(progress, videoDesign) {
+    const barWidth = videoDesign.canvas.width * 0.6;
     const barHeight = 20;
-    const x = 200;
+    const x = (videoDesign.canvas.width - barWidth) / 2;
+    const y = videoDesign.canvas.height - 80;
 
     // 背景
     this.ctx.fillStyle = '#374151';
@@ -127,277 +305,107 @@ class VideoComposer {
     this.ctx.fillRect(x, y, barWidth * progress, barHeight);
   }
 
-  // ランキング動画生成
-  async generateRankingVideo(contentData, duration, onProgress) {
-    const recordingPromise = this.startRecording();
-    const startTime = Date.now();
-    const targetDuration = duration * 1000;
-    const items = contentData.items || [];
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / targetDuration, 1);
-
-      // 背景
-      this.drawBackground('ranking');
-
-      // タイトル
-      this.drawText(
-        contentData.title,
-        this.canvas.width / 2,
-        150,
-        { size: 70, weight: 'bold' }
-      );
-
-      // ランキングアイテム
-      if (items.length > 0) {
-        const currentIndex = Math.floor(progress * items.length);
-        const currentItem = items[Math.min(currentIndex, items.length - 1)];
-
-        // ランキング番号
-        this.drawText(
-          `#${currentIndex + 1}`,
-          this.canvas.width / 2,
-          300,
-          { size: 120, weight: 'bold', color: '#fbbf24' }
-        );
-
-        // 商品名
-        this.drawText(
-          currentItem.name,
-          this.canvas.width / 2,
-          400,
-          { size: 50, weight: 'bold' }
-        );
-
-        // 価格
-        this.drawText(
-          currentItem.price,
-          this.canvas.width / 2,
-          460,
-          { size: 40, color: '#10b981' }
-        );
-
-        // 評価
-        if (currentItem.rating) {
-          const stars = '★'.repeat(Math.floor(currentItem.rating)) + 
-                       '☆'.repeat(5 - Math.floor(currentItem.rating));
-          this.drawText(
-            `${stars} ${currentItem.rating.toFixed(1)}`,
-            this.canvas.width / 2,
-            520,
-            { size: 35, color: '#fbbf24' }
-          );
-        }
-
-        // 特徴（features）
-        if (currentItem.features) {
-          currentItem.features.slice(0, 3).forEach((feature, i) => {
-            this.drawText(
-              `✓ ${feature}`,
-              this.canvas.width / 2,
-              580 + (i * 40),
-              { size: 28, color: '#10b981' }
-            );
-          });
-        }
-      }
-
-      // プログレスバー
-      this.drawProgressBar(progress);
-
-      // 時間表示
-      this.drawText(
-        `${Math.floor(elapsed / 1000)}s / ${Math.floor(duration)}s`,
-        this.canvas.width / 2,
-        760,
-        { size: 30, color: '#9ca3af' }
-      );
-
-      // プログレス更新
-      if (onProgress) {
-        onProgress(Math.floor(progress * 100));
-      }
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setTimeout(() => this.stopRecording(), 500);
-      }
-    };
-
-    animate();
-    return recordingPromise;
-  }
-
-  // 比較動画生成
-  async generateComparisonVideo(contentData, duration, onProgress) {
-    const recordingPromise = this.startRecording();
-    const startTime = Date.now();
-    const targetDuration = duration * 1000;
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / targetDuration, 1);
-
-      this.drawBackground('comparison');
-
-      // タイトル
-      this.drawText(
-        contentData.title,
-        this.canvas.width / 2,
-        150,
-        { size: 60, weight: 'bold' }
-      );
-
-      // A vs B 表示切替
-      const showA = progress < 0.5;
-      const product = showA ? contentData.productA : contentData.productB;
-      const color = showA ? '#3b82f6' : '#ef4444';
-
-      if (product) {
-        this.drawText(
-          product.name,
-          this.canvas.width / 2,
-          300,
-          { size: 60, weight: 'bold', color }
-        );
-
-        this.drawText(
-          product.price,
-          this.canvas.width / 2,
-          370,
-          { size: 45, color: '#10b981' }
-        );
-
-        // メリット/デメリット
-        if (product.pros) {
-          this.drawText(
-            '✓ ' + product.pros.join(' ✓ '),
-            this.canvas.width / 2,
-            450,
-            { size: 32, color: '#10b981' }
-          );
-        }
-
-        if (product.cons) {
-          this.drawText(
-            '⚠ ' + product.cons.join(' ⚠ '),
-            this.canvas.width / 2,
-            500,
-            { size: 28, color: '#f59e0b' }
-          );
-        }
-      }
-
-      this.drawProgressBar(progress);
-
-      if (onProgress) {
-        onProgress(Math.floor(progress * 100));
-      }
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setTimeout(() => this.stopRecording(), 500);
-      }
-    };
-
-    animate();
-    return recordingPromise;
-  }
-
-  // チュートリアル動画生成
-  async generateTutorialVideo(contentData, duration, onProgress) {
-    const recordingPromise = this.startRecording();
-    const startTime = Date.now();
-    const targetDuration = duration * 1000;
-    const steps = contentData.steps || [];
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / targetDuration, 1);
-
-      this.drawBackground('tutorial');
-
-      // タイトル  
-      this.drawText(
-        contentData.title,
-        this.canvas.width / 2,
-        150,
-        { size: 60, weight: 'bold' }
-      );
-
-      // ステップ表示
-      if (steps.length > 0) {
-        const currentIndex = Math.floor(progress * steps.length);
-        const currentStep = steps[Math.min(currentIndex, steps.length - 1)];
-
-        this.drawText(
-          `STEP ${currentStep.step}`,
-          this.canvas.width / 2,
-          300,
-          { size: 80, weight: 'bold', color: '#10b981' }
-        );
-
-        this.drawText(
-          currentStep.title,
-          this.canvas.width / 2,
-          380,
-          { size: 45, weight: 'bold' }
-        );
-
-        // 長いコンテンツは改行対応
-        const words = currentStep.content.split('');
-        if (words.length > 30) {
-          const line1 = words.slice(0, 30).join('');
-          const line2 = words.slice(30).join('');
-          this.drawText(line1, this.canvas.width / 2, 450, { size: 32 });
-          this.drawText(line2, this.canvas.width / 2, 490, { size: 32 });
-        } else {
-          this.drawText(
-            currentStep.content,
-            this.canvas.width / 2,
-            450,
-            { size: 32 }
-          );
-        }
-      }
-
-      this.drawProgressBar(progress);
-
-      if (onProgress) {
-        onProgress(Math.floor(progress * 100));
-      }
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setTimeout(() => this.stopRecording(), 500);
-      }
-    };
-
-    animate();
-    return recordingPromise;
-  }
-
-  // メイン生成関数
-  async generateVideo(contentData, template, duration, onProgress) {
+  // メイン生成関数（AI完全主導版・強化）
+  async generateVideoFromDesign(videoDesign, onProgress) {
+    console.log('🚀 AI設計図による動画生成開始:', videoDesign);
+    
     try {
-      switch (template) {
-        case 'ranking':
-          return await this.generateRankingVideo(contentData, duration, onProgress);
-        case 'comparison':
-          return await this.generateComparisonVideo(contentData, duration, onProgress);
-        case 'tutorial':
-          return await this.generateTutorialVideo(contentData, duration, onProgress);
-        default:
-          return await this.generateRankingVideo(contentData, duration, onProgress);
-      }
+      // 録画開始
+      const recordingPromise = this.startRecording();
+      
+      const startTime = Date.now();
+      const targetDuration = videoDesign.duration * 1000;
+      const scenes = videoDesign.scenes || [];
+      
+      console.log(`📋 シーン数: ${scenes.length}, 動画長: ${videoDesign.duration}秒`);
+
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / targetDuration, 1);
+        const currentTime = elapsed / 1000;
+
+        // 背景描画
+        this.drawBackground(videoDesign);
+
+        // 現在時刻に該当するシーンを探して描画
+        const currentScene = this.getCurrentScene(scenes, currentTime);
+        
+        if (currentScene) {
+          this.renderScene(currentScene, progress, videoDesign);
+        } else {
+          // シーンがない場合のフォールバック
+          this.drawText(
+            videoDesign.title || 'AI設計動画',
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            60,
+            '#ffffff'
+          );
+        }
+
+        // プログレスバー
+        this.drawProgressBar(progress, videoDesign);
+
+        // 時間表示
+        this.drawText(
+          `${Math.floor(currentTime)}s / ${videoDesign.duration}s`,
+          videoDesign.canvas.width / 2,
+          videoDesign.canvas.height - 30,
+          24,
+          '#9ca3af'
+        );
+
+        // プログレス通知
+        if (onProgress) {
+          onProgress(Math.floor(progress * 100));
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          console.log('🏁 アニメーション完了、録画停止');
+          setTimeout(() => this.stopRecording(), 500);
+        }
+      };
+
+      animate();
+      return recordingPromise;
+
     } catch (error) {
-      console.error('動画生成エラー:', error);
+      console.error('AI主導動画生成エラー:', error);
       throw error;
     }
+  }
+
+  // 後方互換性のためのラッパー関数
+  async generateVideo(contentData, template, duration, format, onProgress) {
+    console.log('⚠️ 後方互換性関数が呼ばれました。AI設計図版を推奨します。');
+    
+    // 旧形式を新形式に変換（簡易版）
+    const videoDesign = {
+      title: contentData.title || `${template} 動画`,
+      duration: duration,
+      canvas: {
+        width: format === 'short' ? 1080 : 1920,
+        height: format === 'short' ? 1920 : 1080,
+        backgroundColor: '#1e3a8a,#7c3aed,#db2777'
+      },
+      scenes: [
+        {
+          startTime: 0,
+          endTime: duration,
+          type: 'item',
+          content: {
+            name: contentData.title || `${template} 動画`,
+            rank: 1,
+            price: '¥19,800',
+            features: ['AI生成', '高品質', 'おすすめ']
+          }
+        }
+      ]
+    };
+    
+    return this.generateVideoFromDesign(videoDesign, onProgress);
   }
 }
 

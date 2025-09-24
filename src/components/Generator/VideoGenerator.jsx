@@ -1,9 +1,9 @@
-// src/components/Generator/VideoGenerator.jsx - メインUIコンポーネント
+// src/components/Generator/VideoGenerator.jsx - AI完全主導版
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Play, Download, Zap, Smartphone, Monitor, Target, Video, Star, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { Play, Download, Zap, Smartphone, Monitor, Target, Video, Star, AlertCircle, CheckCircle } from 'lucide-react';
 
-// サービス層インポート
+// AI完全主導サービス層インポート
 import openaiService from '../../services/api/openai.js';
 import videoComposer from '../../services/video/videoComposer.js';
 
@@ -30,7 +30,7 @@ const VideoGenerator = () => {
       id: 'hybrid', 
       name: 'ハイブリッド', 
       icon: Star, 
-      desc: 'ショート+ミディアム両方', 
+      desc: 'AI設計×ショート+ミディアム', 
       revenue: '月15-35万',
       recommended: true
     },
@@ -38,14 +38,14 @@ const VideoGenerator = () => {
       id: 'short', 
       name: 'ショート', 
       icon: Smartphone, 
-      desc: '15-60秒', 
+      desc: 'AI設計×縦型15-60秒', 
       revenue: '月5-15万' 
     },
     { 
       id: 'medium', 
       name: 'ミディアム', 
       icon: Monitor, 
-      desc: '3-8分', 
+      desc: 'AI設計×横型3-8分', 
       revenue: '月10-25万' 
     }
   ];
@@ -55,37 +55,33 @@ const VideoGenerator = () => {
       id: 'ranking', 
       name: 'ランキング', 
       icon: '🏆',
-      desc: 'おすすめTOP5形式',
-      shortDur: '30-60秒',
-      mediumDur: '4-6分'
+      desc: 'AI がランキング形式を自動設計',
+      aiFeature: 'ランキング順・色配置・時間配分をAI最適化'
     },
     { 
       id: 'comparison', 
       name: '比較(VS)', 
       icon: '⚡',
-      desc: '商品・サービス比較',
-      shortDur: '45-60秒', 
-      mediumDur: '5-7分'
+      desc: 'AI が比較レイアウトを自動設計',
+      aiFeature: '商品A vs B のビジュアル比較をAI構成'
     },
     { 
       id: 'tutorial', 
       name: 'チュートリアル', 
       icon: '📚',
-      desc: 'How-to・選び方',
-      shortDur: '30-45秒',
-      mediumDur: '3-5分'
+      desc: 'AI がステップ形式を自動設計',
+      aiFeature: '手順の流れ・説明配置をAI構成'
     },
     { 
       id: 'news', 
       name: 'トレンドニュース', 
       icon: '📰',
-      desc: '最新情報・話題',
-      shortDur: '15-30秒',
-      mediumDur: '3-4分'
+      desc: 'AI がニュース形式を自動設計',
+      aiFeature: 'トレンド情報の視覚表現をAI構成'
     }
   ];
 
-  // === メイン生成関数 ===
+  // === AI完全主導生成関数 ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -98,57 +94,62 @@ const VideoGenerator = () => {
     setTab('generating');
 
     try {
-      // Canvas初期化
-      videoComposer.initCanvas(canvasRef);
-
-      // ステップ1: AIコンテンツ生成
-      setStatus('ChatGPT APIでコンテンツを生成中...');
-      setProgress(15);
-      
-      const aiContent = await openaiService.generateContent(keyword, template);
-      
-      setStatus('動画コンテンツを準備中...');
-      setProgress(25);
-
       const results = {};
 
-      // ステップ2: ミディアム動画生成
+      // ステップ1: ミディアム動画生成（AI完全主導）
       if (format === 'hybrid' || format === 'medium') {
+        setStatus('AI がミディアム動画を設計中...');
+        setProgress(10);
+        
+        // AIに動画設計図を作成させる
+        const mediumDesign = await openaiService.generateVideoDesign(keyword, template, 'medium', 8);
+        
         setStatus('ミディアム動画を生成中...');
-        setProgress(40);
-
-        const mediumVideo = await videoComposer.generateVideo(
-          aiContent, 
-          template, 
-          8, // 8秒のテスト動画
+        setProgress(25);
+        
+        // Canvas初期化（AI設計図ベース）
+        videoComposer.initCanvas(canvasRef, mediumDesign);
+        
+        // AI設計図に基づいて動画生成
+        const mediumVideo = await videoComposer.generateVideoFromDesign(
+          mediumDesign,
           (videoProgress) => {
-            setProgress(40 + (videoProgress * 0.25)); // 40-65%
+            setProgress(25 + (videoProgress * 0.3)); // 25-55%
           }
         );
 
         results.medium = {
-          title: aiContent.title,
-          duration: '5:30',
-          format: '1920x1080',
-          thumbnail: templates.find(t => t.id === template)?.icon || '🎬',
+          title: mediumDesign.metadata.seoTitle,
+          duration: `${mediumDesign.duration}秒`,
+          format: `${mediumDesign.canvas.width}x${mediumDesign.canvas.height}`,
+          thumbnail: '🎬',
           estimatedRevenue: 18500,
-          description: generateDescription(aiContent, 'medium'),
-          tags: generateTags(keyword, template),
-          videoData: mediumVideo
+          description: mediumDesign.metadata.description,
+          tags: mediumDesign.metadata.tags,
+          videoData: mediumVideo,
+          aiDesign: mediumDesign // AI設計図も保存
         };
 
-        setProgress(65);
+        setProgress(55);
       }
 
-      // ステップ3: ショート動画生成  
+      // ステップ2: ショート動画生成（AI完全主導）
       if (format === 'hybrid' || format === 'short') {
+        setStatus('AI がショート動画を設計中...');
+        setProgress(60);
+        
+        // AIに動画設計図を作成させる
+        const shortDesign = await openaiService.generateVideoDesign(keyword, template, 'short', 5);
+        
         setStatus('ショート動画を生成中...');
         setProgress(70);
-
-        const shortVideo = await videoComposer.generateVideo(
-          aiContent,
-          template,
-          5, // 5秒のテスト動画
+        
+        // Canvas初期化（AI設計図ベース）
+        videoComposer.initCanvas(canvasRef, shortDesign);
+        
+        // AI設計図に基づいて動画生成
+        const shortVideo = await videoComposer.generateVideoFromDesign(
+          shortDesign,
           (videoProgress) => {
             setProgress(70 + (videoProgress * 0.25)); // 70-95%
           }
@@ -156,13 +157,14 @@ const VideoGenerator = () => {
 
         results.short = {
           title: `${keyword} 1位はコレ！ #shorts`,
-          duration: '45秒',
-          format: '1080x1920', 
+          duration: `${shortDesign.duration}秒`,
+          format: `${shortDesign.canvas.width}x${shortDesign.canvas.height}`,
           thumbnail: '📱',
           estimatedRevenue: 8200,
-          description: generateDescription(aiContent, 'short'),
-          tags: generateTags(keyword, template, 'shorts'),
-          videoData: shortVideo
+          description: shortDesign.metadata.description,
+          tags: shortDesign.metadata.tags,
+          videoData: shortVideo,
+          aiDesign: shortDesign // AI設計図も保存
         };
 
         setProgress(95);
@@ -171,12 +173,12 @@ const VideoGenerator = () => {
       // ハイブリッド特有の相互送客データ
       if (format === 'hybrid') {
         results.crossPromotion = {
-          shortToMedium: '詳しい比較は概要欄のミディアム動画をチェック！',
-          mediumToShort: 'この動画のハイライトはショート版でも公開中！'
+          shortToMedium: '詳しくは長編動画をチェック！',
+          mediumToShort: 'ハイライトはショート版でも公開中！'
         };
       }
 
-      setStatus('動画生成完了！');
+      setStatus('AI完全主導動画生成完了！');
       setProgress(100);
       setVideos(results);
 
@@ -186,28 +188,12 @@ const VideoGenerator = () => {
       }, 1500);
 
     } catch (err) {
-      console.error('動画生成エラー:', err);
-      setError('動画生成でエラーが発生しました: ' + err.message);
+      console.error('AI完全主導生成エラー:', err);
+      setError('AI動画生成でエラーが発生しました: ' + err.message);
     } finally {
       setIsGenerating(false);
     }
   }, [keyword, format, template]);
-
-  // === ヘルパー関数 ===
-  const generateDescription = (content, type) => {
-    const base = `${content.title}\n\n${content.script || ''}`;
-    if (type === 'medium') {
-      return `${base}\n\n#${keyword} #ランキング #おすすめ #2024年`;
-    } else {
-      return `${base}\n\n#${keyword} #shorts #おすすめ`;
-    }
-  };
-
-  const generateTags = (keyword, template, extra = '') => {
-    const baseTags = [keyword, template, 'おすすめ', '2024年'];
-    if (extra) baseTags.push(extra);
-    return baseTags;
-  };
 
   // === ダウンロード関数 ===
   const downloadVideo = useCallback((videoData, filename) => {
@@ -219,6 +205,21 @@ const VideoGenerator = () => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  }, []);
+
+  // === AI設計図ダウンロード ===
+  const downloadDesign = useCallback((aiDesign, filename) => {
+    const designJSON = JSON.stringify(aiDesign, null, 2);
+    const blob = new Blob([designJSON], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }, []);
 
   // === リセット関数 ===
@@ -237,7 +238,7 @@ const VideoGenerator = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
       {/* Hidden Canvas */}
-      <canvas ref={canvasRef} className="hidden" width={1920} height={1080} />
+      <canvas ref={canvasRef} className="hidden" />
 
       {/* Header */}
       <div className="bg-black/20 backdrop-blur-sm border-b border-white/10">
@@ -248,13 +249,13 @@ const VideoGenerator = () => {
                 <Zap className="w-6 h-6 text-black" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">🎬 AI ハイブリッド動画生成ツール</h1>
-                <p className="text-sm text-gray-300">適切なフォルダ構成版 | ChatGPT API統合済み</p>
+                <h1 className="text-xl font-bold">🧠 AI完全主導 動画生成ツール</h1>
+                <p className="text-sm text-gray-300">ChatGPT が動画の設計図を自動作成 | 人間のコーディング不要</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-300">技術実現性</p>
-              <p className="font-bold text-green-400">100% 確認済み</p>
+              <p className="text-sm text-gray-300">AI設計システム</p>
+              <p className="font-bold text-yellow-400">完全自動化</p>
             </div>
           </div>
         </div>
@@ -264,9 +265,9 @@ const VideoGenerator = () => {
       <div className="max-w-4xl mx-auto px-6 pt-6">
         <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
           {[
-            { id: 'input', name: '設定', icon: Target },
-            { id: 'generating', name: '生成中', icon: Zap },
-            { id: 'result', name: '結果', icon: Video }
+            { id: 'input', name: 'AI設定', icon: Target },
+            { id: 'generating', name: 'AI生成中', icon: Zap },
+            { id: 'result', name: 'AI結果', icon: Video }
           ].map(t => (
             <button
               key={t.id}
@@ -295,12 +296,12 @@ const VideoGenerator = () => {
           </div>
         )}
 
-        {/* 設定タブ */}
+        {/* AI設定タブ */}
         {tab === 'input' && (
           <div className="space-y-6">
             {/* 動画形式選択 */}
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
-              <h2 className="text-xl font-bold mb-4">動画形式選択</h2>
+              <h2 className="text-xl font-bold mb-4">🧠 AI 動画形式選択</h2>
               <div className="grid grid-cols-3 gap-4">
                 {formats.map(f => (
                   <button
@@ -312,7 +313,7 @@ const VideoGenerator = () => {
                   >
                     {f.recommended && (
                       <div className="absolute -top-2 -right-2 bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full">
-                        推奨
+                        AI推奨
                       </div>
                     )}
                     <f.icon className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
@@ -326,12 +327,12 @@ const VideoGenerator = () => {
 
             {/* キーワード入力 */}
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
-              <h2 className="text-xl font-bold mb-4">キーワード入力</h2>
+              <h2 className="text-xl font-bold mb-4">🎯 AI 解析用キーワード</h2>
               <input
                 type="text"
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
-                placeholder="例: ワイヤレスイヤホン, 美容クリーム, 筋トレグッズ"
+                placeholder="例: ワイヤレスイヤホン（AI が自動で商品・レイアウト・色彩を決定）"
                 className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-yellow-400 focus:outline-none text-white placeholder-gray-400"
               />
               <div className="flex flex-wrap gap-2 mt-3">
@@ -345,12 +346,18 @@ const VideoGenerator = () => {
                   </button>
                 ))}
               </div>
+              <div className="mt-3 p-3 bg-blue-500/20 rounded-lg">
+                <div className="text-sm text-blue-400 font-bold mb-1">🤖 AI が自動決定する要素</div>
+                <div className="text-xs text-gray-300">
+                  商品選定・価格調査・ランキング順位・色彩設計・フォントサイズ・レイアウト・時間配分・アニメーション
+                </div>
+              </div>
             </div>
 
-            {/* テンプレート選択 */}
+            {/* AI テンプレート選択 */}
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
-              <h2 className="text-xl font-bold mb-4">動画テンプレート</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <h2 className="text-xl font-bold mb-4">🎨 AI テンプレート選択</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {templates.map(t => (
                   <button
                     key={t.id}
@@ -364,18 +371,15 @@ const VideoGenerator = () => {
                       <div className="font-bold">{t.name}</div>
                     </div>
                     <div className="text-sm text-gray-400 mb-2">{t.desc}</div>
-                    {format === 'hybrid' && (
-                      <div className="text-xs space-y-1">
-                        <div>📱 ショート: {t.shortDur}</div>
-                        <div>🖥️ ミディアム: {t.mediumDur}</div>
-                      </div>
-                    )}
+                    <div className="text-xs text-yellow-400 bg-yellow-400/10 rounded p-2">
+                      🧠 {t.aiFeature}
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 生成ボタン */}
+            {/* AI生成ボタン */}
             <button
               onClick={handleGenerate}
               disabled={!keyword || isGenerating}
@@ -383,18 +387,20 @@ const VideoGenerator = () => {
             >
               <Zap className="w-6 h-6" />
               <span>
-                {format === 'hybrid' ? 'ハイブリッド動画生成開始'
-                  : format === 'short' ? 'ショート動画生成開始'
-                  : 'ミディアム動画生成開始'}
+                🧠 AI に動画設計を依頼 → 自動生成開始
               </span>
             </button>
+
+            <div className="text-center text-sm text-gray-400">
+              ⚡ AI が 5-10秒で動画の設計図を作成し、自動で動画を生成します
+            </div>
           </div>
         )}
 
-        {/* 生成中タブ */}
+        {/* AI生成中タブ */}
         {tab === 'generating' && (
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center">
-            <div className="text-2xl font-bold mb-4">{status || '準備中...'}</div>
+            <div className="text-2xl font-bold mb-4">🧠 {status || 'AI が設計図を作成中...'}</div>
             <div className="w-full bg-white/20 rounded-full h-4 mb-6">
               <div 
                 className="bg-gradient-to-r from-yellow-400 to-orange-500 h-4 rounded-full transition-all duration-500"
@@ -405,29 +411,29 @@ const VideoGenerator = () => {
               {Math.floor(progress)}% 完了
             </div>
             <div className="text-gray-400 mb-8">
-              {format === 'hybrid' 
-                ? 'ショート＋ミディアム動画を同時生成しています...'
-                : format === 'short'
-                ? 'バズを狙ったショート動画を生成しています...'
-                : '収益化に最適なミディアム動画を生成しています...'}
+              {progress < 20 
+                ? '🎨 AI がレイアウト・色彩・構成を設計中...'
+                : progress < 60
+                ? '🎬 AI設計図に基づいて動画を生成中...'
+                : '✨ 最終調整・品質チェック中...'}
             </div>
             
             {progress === 100 && (
               <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 flex items-center justify-center space-x-2">
                 <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-green-400">動画生成完了！結果を確認中...</span>
+                <span className="text-green-400">🧠 AI完全主導生成完了！</span>
               </div>
             )}
           </div>
         )}
 
-        {/* 結果タブ */}
+        {/* AI結果タブ */}
         {tab === 'result' && videos && (
           <div className="space-y-6">
             <div className="text-center">
-              <h2 className="text-3xl font-bold text-yellow-400 mb-2">🎉 動画生成完了！</h2>
+              <h2 className="text-3xl font-bold text-yellow-400 mb-2">🧠 AI設計完了！</h2>
               <p className="text-gray-400">
-                適切な構成で生成された高品質動画をお楽しみください
+                ChatGPT が設計した動画をお楽しみください
               </p>
             </div>
 
@@ -439,17 +445,15 @@ const VideoGenerator = () => {
                 <div className="bg-white/10 rounded-xl p-6">
                   <h3 className="text-xl font-bold mb-3 flex items-center">
                     <Monitor className="w-5 h-5 mr-2 text-green-400" />
-                    ミディアム動画
+                    AI設計ミディアム動画
                   </h3>
                   <div className="bg-black/30 rounded p-4 mb-4 text-center">
                     <div className="text-4xl mb-2">{videos.medium.thumbnail}</div>
                     <div className="font-bold">{videos.medium.title}</div>
                     <div className="text-sm text-gray-400">{videos.medium.duration} | {videos.medium.videoData.size}</div>
+                    <div className="text-xs text-green-400 mt-1">{videos.medium.format}</div>
                   </div>
-                  <div className="text-xl font-bold text-green-400 mb-4">
-                    月収予想: ¥{videos.medium.estimatedRevenue.toLocaleString()}
-                  </div>
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-2 mb-4">
                     <button 
                       onClick={() => window.open(videos.medium.videoData.url)}
                       className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded flex items-center justify-center space-x-2"
@@ -458,30 +462,35 @@ const VideoGenerator = () => {
                       <span>再生</span>
                     </button>
                     <button 
-                      onClick={() => downloadVideo(videos.medium.videoData, `medium_${keyword}_${Date.now()}.webm`)}
+                      onClick={() => downloadVideo(videos.medium.videoData, `ai_medium_${keyword}.webm`)}
                       className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded flex items-center justify-center space-x-2"
                     >
                       <Download className="w-4 h-4" />
-                      <span>DL</span>
+                      <span>動画DL</span>
                     </button>
                   </div>
+                  <button 
+                    onClick={() => downloadDesign(videos.medium.aiDesign, `ai_design_medium_${keyword}.json`)}
+                    className="w-full bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm flex items-center justify-center space-x-2"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>🧠 AI設計図DL</span>
+                  </button>
                 </div>
 
                 {/* ショート動画 */}
                 <div className="bg-white/10 rounded-xl p-6">
                   <h3 className="text-xl font-bold mb-3 flex items-center">
                     <Smartphone className="w-5 h-5 mr-2 text-blue-400" />
-                    ショート動画
+                    AI設計ショート動画
                   </h3>
                   <div className="bg-black/30 rounded p-4 mb-4 text-center">
                     <div className="text-4xl mb-2">{videos.short.thumbnail}</div>
                     <div className="font-bold">{videos.short.title}</div>
                     <div className="text-sm text-gray-400">{videos.short.duration} | {videos.short.videoData.size}</div>
+                    <div className="text-xs text-blue-400 mt-1">{videos.short.format}</div>
                   </div>
-                  <div className="text-xl font-bold text-blue-400 mb-4">
-                    月収予想: ¥{videos.short.estimatedRevenue.toLocaleString()}
-                  </div>
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-2 mb-4">
                     <button 
                       onClick={() => window.open(videos.short.videoData.url)}
                       className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded flex items-center justify-center space-x-2"
@@ -490,13 +499,20 @@ const VideoGenerator = () => {
                       <span>再生</span>
                     </button>
                     <button 
-                      onClick={() => downloadVideo(videos.short.videoData, `short_${keyword}_${Date.now()}.webm`)}
+                      onClick={() => downloadVideo(videos.short.videoData, `ai_short_${keyword}.webm`)}
                       className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded flex items-center justify-center space-x-2"
                     >
                       <Download className="w-4 h-4" />
-                      <span>DL</span>
+                      <span>動画DL</span>
                     </button>
                   </div>
+                  <button 
+                    onClick={() => downloadDesign(videos.short.aiDesign, `ai_design_short_${keyword}.json`)}
+                    className="w-full bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm flex items-center justify-center space-x-2"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>🧠 AI設計図DL</span>
+                  </button>
                 </div>
               </div>
             ) : (
@@ -508,11 +524,9 @@ const VideoGenerator = () => {
                     <>
                       <div className="text-4xl mb-4">{video.thumbnail}</div>
                       <div className="font-bold text-xl mb-2">{video.title}</div>
-                      <div className="text-gray-400 mb-4">{video.duration} | {video.videoData.size}</div>
-                      <div className="text-2xl font-bold text-green-400 mb-6">
-                        月収予想: ¥{video.estimatedRevenue.toLocaleString()}
-                      </div>
-                      <div className="flex justify-center space-x-4">
+                      <div className="text-gray-400 mb-2">{video.duration} | {video.videoData.size}</div>
+                      <div className="text-sm text-yellow-400 mb-4">🧠 AI設計: {video.format}</div>
+                      <div className="flex justify-center space-x-4 mb-4">
                         <button 
                           onClick={() => window.open(video.videoData.url)}
                           className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg flex items-center space-x-2"
@@ -521,29 +535,52 @@ const VideoGenerator = () => {
                           <span>再生</span>
                         </button>
                         <button 
-                          onClick={() => downloadVideo(video.videoData, `${format}_${keyword}_${Date.now()}.webm`)}
+                          onClick={() => downloadVideo(video.videoData, `ai_${format}_${keyword}.webm`)}
                           className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg flex items-center space-x-2"
                         >
                           <Download className="w-5 h-5" />
-                          <span>ダウンロード</span>
+                          <span>動画DL</span>
                         </button>
                       </div>
+                      <button 
+                        onClick={() => downloadDesign(video.aiDesign, `ai_design_${format}_${keyword}.json`)}
+                        className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg flex items-center space-x-2"
+                      >
+                        <Download className="w-5 h-5" />
+                        <span>🧠 AI設計図ダウンロード</span>
+                      </button>
                     </>
                   ) : null;
                 })()}
               </div>
             )}
 
-            {/* ハイブリッド効果表示 */}
-            {format === 'hybrid' && videos.medium && videos.short && (
-              <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl p-6 border border-purple-400/30 text-center">
-                <h3 className="text-xl font-bold mb-4">🚀 ハイブリッド効果</h3>
-                <div className="text-3xl font-bold text-green-400 mb-2">
-                  合計月収: ¥{(videos.medium.estimatedRevenue + videos.short.estimatedRevenue).toLocaleString()}
+            {/* AI設計の威力表示 */}
+            <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl p-6 border border-yellow-400/30">
+              <h3 className="text-xl font-bold mb-4">🧠 AI完全主導の威力</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-yellow-400">0行</div>
+                  <div className="text-sm text-gray-400">手動テンプレートコード</div>
                 </div>
-                <div className="text-yellow-400">単体比 +240% の収益向上！</div>
+                <div>
+                  <div className="text-2xl font-bold text-green-400">100%</div>
+                  <div className="text-sm text-gray-400">AI自動設計</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-400">5-10秒</div>
+                  <div className="text-sm text-gray-400">設計完了時間</div>
+                </div>
               </div>
-            )}
+              <div className="mt-4 p-4 bg-white/10 rounded-lg">
+                <div className="text-sm text-gray-300 space-y-1">
+                  <div>🎨 <strong>レイアウト設計</strong>: ChatGPT が最適な配置を決定</div>
+                  <div>🎨 <strong>色彩設計</strong>: キーワードに合った色合いを自動選択</div>
+                  <div>⏰ <strong>時間配分</strong>: コンテンツ量に応じた最適なタイミング</div>
+                  <div>📱 <strong>フォーマット最適化</strong>: ショート・ミディアムそれぞれに最適化</div>
+                </div>
+              </div>
+            </div>
 
             {/* アクションボタン */}
             <div className="text-center">
@@ -551,7 +588,7 @@ const VideoGenerator = () => {
                 onClick={resetAll}
                 className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-6 py-3 rounded-lg font-bold"
               >
-                新しい動画を生成
+                🧠 新しいAI設計で動画生成
               </button>
             </div>
           </div>

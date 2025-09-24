@@ -1,4 +1,4 @@
-// src/config/api.js - API設定ファイル
+// src/config/api.js - API設定ファイル（アスペクト比修正版）
 
 export const API_CONFIG = {
   openai: {
@@ -24,12 +24,12 @@ export const API_CONFIG = {
       short: {
         duration: { min: 15, max: 60 },
         aspectRatio: '9:16',
-        resolution: '1080x1920'
+        resolution: { width: 1080, height: 1920 } // 縦型に修正
       },
       medium: {
         duration: { min: 180, max: 480 },
         aspectRatio: '16:9', 
-        resolution: '1920x1080'
+        resolution: { width: 1920, height: 1080 } // 横型
       }
     },
 
