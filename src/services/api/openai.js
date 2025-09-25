@@ -1,4 +1,4 @@
-// src/services/api/openai.js - シンプル版（年号可変化+AI判定+3位→1位順序）
+// src/services/api/openai.js - 面白いコンテンツ生成版
 
 import { API_CONFIG, ENV, ENDPOINTS } from '../../config/api.js';
 
@@ -9,18 +9,59 @@ class OpenAIService {
     this.model = API_CONFIG.openai.model;
   }
 
-  // 🆕 年号を動的取得
+  // 年号を動的取得
   getCurrentYear() {
     return new Date().getFullYear();
   }
 
-  // 🤖 完全自由形式AI判定（制限なし）
+  // AI自動コンテンツタイプ判定
   async analyzeContentType(keyword) {
-    // AIに最適な構成を完全自由に決めてもらう
-    return 'free'; // 常に自由形式
+    if (!this.apiKey) {
+      if (keyword.includes('方法') || keyword.includes('やったほうがいい')) return 'method';
+      if (keyword.includes('比較') || keyword.includes('vs') || keyword.includes('どっち')) return 'comparison';
+      return 'ranking';
+    }
+
+    try {
+      const response = await fetch(`${this.baseURL}${ENDPOINTS.chatgpt.completion}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [{
+            role: 'user',
+            content: `"${keyword}" に最適な動画形式を選んでください：
+
+1. "ranking" - おすすめ・ランキング・TOP3系
+2. "comparison" - 比較・vs・どっち系  
+3. "tutorial" - 方法・やり方・手順系
+4. "explanation" - 解説・について・とは系
+
+1つだけ回答してください。`
+          }],
+          max_tokens: 20,
+          temperature: 0
+        })
+      });
+
+      const data = await response.json();
+      const result = data.choices[0].message.content.toLowerCase();
+      
+      if (result.includes('comparison')) return 'comparison';
+      if (result.includes('tutorial')) return 'tutorial';
+      if (result.includes('explanation')) return 'explanation';
+      return 'ranking';
+      
+    } catch (error) {
+      console.warn('AI判定エラー、デフォルトをrankingに設定:', error);
+      return 'ranking';
+    }
   }
 
-  // 🆕 完全自由形式プロンプト（AIが全て決める）
+  // 🎬 超面白いコンテンツ生成プロンプト
   async getVideoDesignPrompt(keyword, template, format, duration) {
     const formatSpecs = {
       short: { width: 1080, height: 1920 },
@@ -28,73 +69,120 @@ class OpenAIService {
     };
     const spec = formatSpecs[format] || formatSpecs.medium;
 
-    return `あなたは動画制作のプロです。"${keyword}"について、最も効果的で魅力的な動画を作成してください。
+    return `あなたは**バズるコンテンツクリエイター**です。「${keyword}」について、視聴者が最後まで見たくなる超面白い動画を作成してください。
 
-**完全自由設定:**
-- 動画の形式・構成は全てあなたが決めてください
-- ランキング、比較、解説、チュートリアル、メリデメ、Q&A、ストーリー等なんでも可
-- シーン数、時間配分も最適に設計
-- 価格の有無も内容に応じて判断
-- タイトルもあなたが自由に決めてください
+**🔥 バズる要素を必ず含める:**
+- 刺激的なタイトル（「ヤバい」「禁断の」「絶対に」「秘密の」等）
+- 具体的な数字とメリット（「30秒で」「3倍」「90%の人が知らない」）
+- 意外性と驚き（「実は」「逆に」「騙されてた」）
+- 緊急性（「今すぐ」「手遅れになる前に」）
 
-**制約条件:**
-- 動画時間: ${duration}秒厳守
+**🎯 動画構成パターン例:**
+1. **衝撃の事実** → **具体的な方法/商品** → **行動促進**
+2. **問題提起** → **解決策3選** → **今すぐできること**
+3. **失敗談** → **成功の秘訣** → **あなたも変われる**
+
+**⚡ 制約条件:**
+- 動画時間: ${duration}秒
 - Canvas: ${spec.width}x${spec.height}
+- 必須: タイトルに数字を含める
+- 必須: 各シーンに具体的なメリット/デメリット
 
-**出力形式（完全自由設計）:**
+**出力形式:**
 \`\`\`json
 {
-  "title": "${keyword}について最適なタイトル（完全に自由に決めてください）",
-  "videoType": "あなたが選んだ形式名",
+  "title": "【衝撃】${keyword}で人生が変わる!知らないとヤバい理由3選",
+  "videoType": "選択した最適な形式",
   "duration": ${duration},
   "canvas": {
     "width": ${spec.width},
     "height": ${spec.height},
-    "backgroundColor": "適切な色合い"
+    "backgroundColor": "#1a1a2e,#16213e,#0f3460"
   },
   "content": {
-    "description": "この動画の構成・狙いの説明",
-    "structure": "採用した構成の理由"
+    "description": "この動画の魅力と視聴者にとってのメリット",
+    "structure": "なぜこの構成が効果的なのか"
   },
   "items": [
     {
       "id": 1,
-      "type": "あなたが決めた要素タイプ",
-      "name": "要素名",
+      "type": "ショック要素",
+      "name": "90%の人が知らない${keyword}の真実",
       "content": {
-        "main": "メインコンテンツ",
-        "details": "詳細情報",
-        "extra": "追加情報（価格・評価・手順・メリット等、必要に応じて）"
+        "main": "具体的で衝撃的な事実",
+        "details": "詳しい説明と具体例",
+        "extra": "追加の驚き要素"
+      }
+    },
+    {
+      "id": 2,
+      "type": "解決策",
+      "name": "たった○分で効果が出る方法",
+      "content": {
+        "main": "具体的な手順・商品・方法",
+        "details": "実際の効果・体験談",
+        "extra": "さらなるメリット"
+      }
+    },
+    {
+      "id": 3,
+      "type": "行動促進",
+      "name": "今すぐやらないと後悔する理由",
+      "content": {
+        "main": "緊急性のある理由",
+        "details": "具体的な行動ステップ",
+        "extra": "成功した未来の姿"
       }
     }
   ],
   "scenes": [
     {
       "startTime": 0,
-      "endTime": "適切な時間",
-      "type": "あなたが決めたシーンタイプ",
+      "endTime": ${Math.floor(duration * 0.25)},
+      "type": "衝撃の導入",
       "content": {
-        "mainText": "シーンのメインテキスト",
-        "subText": "サブテキスト（任意）",
-        "targetItem": "対象アイテムID（該当する場合）",
-        "announcement": "アナウンステキスト（任意）",
-        "visualStyle": "このシーンの視覚的特徴"
+        "mainText": "【警告】${keyword}について知らないとヤバい！",
+        "subText": "90%の人が間違っている事実を暴露",
+        "announcement": "まず最初に衝撃の事実をお伝えします",
+        "visualStyle": "赤色警告・緊急感演出"
+      }
+    },
+    {
+      "startTime": ${Math.floor(duration * 0.25)},
+      "endTime": ${Math.floor(duration * 0.7)},
+      "type": "解決策提示",
+      "content": {
+        "mainText": "実は○○するだけで全て解決！",
+        "subText": "具体的な方法・商品・手順を公開",
+        "announcement": "ここからが本当に重要なポイントです",
+        "visualStyle": "希望的・明るい色調"
+      }
+    },
+    {
+      "startTime": ${Math.floor(duration * 0.7)},
+      "endTime": ${duration},
+      "type": "行動促進",
+      "content": {
+        "mainText": "今すぐ行動しないと手遅れに！",
+        "subText": "成功する人と失敗する人の違い",
+        "announcement": "あなたの人生を変えるチャンスです",
+        "visualStyle": "キラキラ・成功感演出"
       }
     }
   ]
 }
 \`\`\`
 
-**重要**: "${keyword}"に最適な形式・構成・内容・タイトルを完全に自由に設計してください。既存の形式やテンプレートに縛られる必要はありません。`;
+**重要**: 「${keyword}」の特性を活かし、視聴者が「見て良かった」「シェアしたい」と思える価値ある内容にしてください。`
   }
 
-  // 本番ChatGPT API呼び出し（シンプル版）
+  // 本番ChatGPT API呼び出し
   async generateVideoDesign(keyword, template, format = 'medium', duration = 30) {
-    console.log(`🚀 AI動画設計: ${keyword}, ${format}, ${duration}秒`);
+    console.log(`🚀 超面白いAI動画設計: ${keyword}, ${format}, ${duration}秒`);
 
     if (!this.apiKey) {
-      console.warn('⚠️ APIキー未設定、モックデータ使用');
-      return this.getMockVideoDesign(keyword, format, duration);
+      console.warn('⚠️ APIキー未設定、面白いモックデータ使用');
+      return this.getEngagingMockVideoDesign(keyword, format, duration);
     }
 
     try {
@@ -109,7 +197,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: '動画設計図をJSON形式で正確に作成してください。'
+              content: '面白くてバズる動画設計図をJSON形式で作成する専門家です。'
             },
             {
               role: 'user',
@@ -117,7 +205,7 @@ class OpenAIService {
             }
           ],
           max_tokens: 2000,
-          temperature: 0.7
+          temperature: 0.8 // 創造性を高める
         })
       });
 
@@ -128,68 +216,101 @@ class OpenAIService {
       const data = await response.json();
       const content = data.choices[0].message.content;
       
-      // JSON抽出
       const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
       const jsonString = jsonMatch ? jsonMatch[1] : content;
       const result = JSON.parse(jsonString);
       
-      // 基本修正
       result.duration = duration;
       
-      // 年号強制削除（不要だった処理）
-      // if (result.title && !result.title.includes(this.getCurrentYear())) {
-      //   result.title = result.title.replace(/【\d+年/, `【${this.getCurrentYear()}年`);
-      // }
-
-      console.log(`✅ AI設計図完成: ${result.title}`);
+      console.log(`✅ 超面白いAI設計図完成: ${result.title}`);
       return result;
 
     } catch (error) {
       console.error('❌ API呼び出しエラー:', error);
-      return this.getMockVideoDesign(keyword, format, duration);
+      return this.getEngagingMockVideoDesign(keyword, format, duration);
     }
   }
 
-  // モックデータ（シンプル版）
-  getMockVideoDesign(keyword, format, duration) {
+  // 面白いモックデータ
+  getEngagingMockVideoDesign(keyword, format, duration) {
     const spec = format === 'short' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 
     return {
-      title: `${keyword}について`,
+      title: `【衝撃】${keyword}で人生激変！99%が知らない秘密3選`,
+      videoType: "衝撃バズ型",
       duration: duration,
       canvas: {
         width: spec.width,
         height: spec.height,
-        backgroundColor: '#1e3a8a,#7c3aed,#db2777'
+        backgroundColor: '#ff1744,#f50057,#e91e63'
+      },
+      content: {
+        description: `${keyword}について、多くの人が知らない衝撃的な真実と、人生を変える具体的な方法を暴露します。`,
+        structure: "衝撃→解決策→行動促進の黄金パターンで、最後まで視聴されやすい構成にしています。"
       },
       items: [
         {
-          rank: 3,
-          name: `${keyword} エントリー`,
-          price: '¥12,800',
-          rating: 4.4,
-          features: ['お手軽', '初心者向け', 'コスパ良好']
+          id: 1,
+          type: "衝撃事実",
+          name: `99%の人が知らない${keyword}の真実`,
+          content: {
+            main: "一般常識と真逆の衝撃的事実",
+            details: "具体的なデータと実例で証明",
+            extra: "この事実を知らないと損をし続ける"
+          }
         },
         {
-          rank: 2,
-          name: `${keyword} スタンダード`,
-          price: '¥19,800',
-          rating: 4.6,
-          features: ['バランス良好', '人気', '安定性']
+          id: 2,
+          type: "秘密の方法",
+          name: `たった30秒で${keyword}が10倍効果的になる方法`,
+          content: {
+            main: "プロだけが知っている裏技",
+            details: "今すぐ実践できる具体的手順",
+            extra: "実際に試した人の驚きの結果"
+          }
         },
         {
-          rank: 1,
-          name: `${keyword} プレミアム`,
-          price: '¥29,800',
-          rating: 4.8,
-          features: ['最高性能', 'プロ仕様', 'No.1']
+          id: 3,
+          type: "人生激変",
+          name: `${keyword}で人生が変わった人の共通点`,
+          content: {
+            main: "成功者だけが実践している秘密",
+            details: "あなたも今日から変われる理由",
+            extra: "行動しないと一生後悔する"
+          }
         }
       ],
       scenes: [
-        { startTime: 0, endTime: 3, type: 'title', content: { mainText: `${keyword}について` } },
-        { startTime: 3, endTime: Math.floor(duration * 0.4), type: 'item', content: { rank: 3, announcement: "第3位！" } },
-        { startTime: Math.floor(duration * 0.4), endTime: Math.floor(duration * 0.7), type: 'item', content: { rank: 2, announcement: "第2位！" } },
-        { startTime: Math.floor(duration * 0.7), endTime: duration, type: 'item', content: { rank: 1, announcement: "第1位！" } }
+        {
+          startTime: 0,
+          endTime: Math.floor(duration * 0.3),
+          type: "衝撃導入",
+          content: {
+            mainText: `【警告】${keyword}で騙されてませんか？`,
+            subText: "99%の人が知らない衝撃の真実",
+            announcement: "この動画を見ないと一生損します"
+          }
+        },
+        {
+          startTime: Math.floor(duration * 0.3),
+          endTime: Math.floor(duration * 0.7),
+          type: "秘密暴露",
+          content: {
+            mainText: "プロが絶対教えない裏技公開！",
+            subText: "たった30秒で効果10倍の方法",
+            announcement: "ここからが本当に重要です"
+          }
+        },
+        {
+          startTime: Math.floor(duration * 0.7),
+          endTime: duration,
+          type: "行動促進",
+          content: {
+            mainText: "今すぐやらないと一生後悔！",
+            subText: "成功する人としない人の決定的違い",
+            announcement: "あなたの人生が今日から変わります"
+          }
+        }
       ]
     };
   }
