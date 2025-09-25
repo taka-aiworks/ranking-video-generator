@@ -1,133 +1,135 @@
-// src/services/video/loopController.js - 無限ループ防止システム
+// src/services/video/loopController.js - タイムアウト修正版
 
 class LoopController {
   constructor() {
-    this.isActive = false;
+    this.sessionActive = false;
     this.startTime = null;
-    this.maxDuration = 180000; // 最大3分（180秒）
-    this.animationId = null;
+    this.duration = 0;
     this.timeoutId = null;
-    this.forceStopCallback = null;
     this.recorder = null;
+    this.onForceStop = null;
+    this.animationIds = [];
   }
 
-  // 録画セッション開始
-  startSession(duration, recorder, forceStopCallback) {
-    console.log('🔒 LoopController セッション開始:', duration + 's');
+  // セッション開始
+  startSession(duration, recorder, onForceStop) {
+    console.log(`🔒 LoopController セッション開始: ${duration}s`);
     
-    this.reset(); // 前回セッションをクリア
-    
-    this.isActive = true;
+    this.sessionActive = true;
     this.startTime = Date.now();
+    this.duration = duration;
     this.recorder = recorder;
-    this.forceStopCallback = forceStopCallback;
-    
-    // 指定時間 + バッファ（5秒）で強制停止
-    const safetyDuration = Math.min(duration * 1000 + 5000, this.maxDuration);
-    
+    this.onForceStop = onForceStop;
+    this.animationIds = [];
+
+    // 🆕 タイムアウト時間を大幅延長（動画時間 + 余裕時間）
+    const timeoutDuration = (duration + 10) * 1000; // 動画時間 + 10秒の余裕
+    console.log(`⏰ タイムアウト設定: ${timeoutDuration / 1000}秒後`);
+
     this.timeoutId = setTimeout(() => {
-      console.log('⚠️ 制限時間到達 - 強制終了実行');
+      console.warn('⚠️ 制限時間到達 - 強制終了実行');
       this.forceStop('TIMEOUT');
-    }, safetyDuration);
-    
-    return true;
-  }
-
-  // アニメーションIDの登録
-  registerAnimation(animationId) {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-    }
-    this.animationId = animationId;
-  }
-
-  // 現在の実行時間取得
-  getElapsedTime() {
-    if (!this.startTime) return 0;
-    return Date.now() - this.startTime;
+    }, timeoutDuration);
   }
 
   // セッション状態確認
   isSessionActive() {
-    return this.isActive && this.startTime;
+    return this.sessionActive;
+  }
+
+  // アニメーションID登録
+  registerAnimation(animationId) {
+    if (this.sessionActive && animationId) {
+      this.animationIds.push(animationId);
+    }
   }
 
   // 正常終了
   endSession() {
+    if (!this.sessionActive) return;
+    
     console.log('✅ LoopController セッション正常終了');
     
+    this.sessionActive = false;
+    
+    // タイムアウトクリア
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
     
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
+    // アニメーション停止
+    this.animationIds.forEach(id => {
+      if (id) cancelAnimationFrame(id);
+    });
+    this.animationIds = [];
     
-    this.isActive = false;
-    
-    // 録画が継続中の場合は停止
-    if (this.recorder && this.recorder.state === 'recording') {
-      console.log('📹 録画停止処理');
-      this.recorder.stop();
-    }
+    // 初期化
+    this.recorder = null;
+    this.onForceStop = null;
+    this.startTime = null;
   }
 
   // 強制停止
-  forceStop(reason = 'UNKNOWN') {
-    console.error('🚨 LoopController 強制停止:', reason);
+  forceStop(reason) {
+    if (!this.sessionActive) return;
     
-    // アニメーション停止
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
+    console.log(`🚨 LoopController 強制停止: ${reason}`);
     
-    // タイマー停止
+    this.sessionActive = false;
+    
+    // タイムアウトクリア
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
     
+    // アニメーション停止
+    this.animationIds.forEach(id => {
+      if (id) cancelAnimationFrame(id);
+    });
+    this.animationIds = [];
+    
     // 録画停止
-    if (this.recorder) {
+    if (this.recorder && this.recorder.state === 'recording') {
       try {
-        if (this.recorder.state === 'recording') {
-          this.recorder.stop();
-        }
+        this.recorder.stop();
       } catch (error) {
-        console.error('録画停止エラー:', error);
+        console.warn('録画停止エラー:', error);
       }
     }
     
     // コールバック実行
-    if (this.forceStopCallback) {
-      this.forceStopCallback(reason);
+    if (this.onForceStop) {
+      this.onForceStop(reason);
     }
     
-    this.reset();
-  }
-
-  // リセット
-  reset() {
-    this.isActive = false;
-    this.startTime = null;
-    this.animationId = null;
-    this.timeoutId = null;
+    // 初期化
     this.recorder = null;
-    this.forceStopCallback = null;
+    this.onForceStop = null;
+    this.startTime = null;
   }
 
-  // デバッグ情報
-  getDebugInfo() {
+  // 経過時間取得
+  getElapsedTime() {
+    if (!this.startTime) return 0;
+    return (Date.now() - this.startTime) / 1000;
+  }
+
+  // 残り時間取得
+  getRemainingTime() {
+    const elapsed = this.getElapsedTime();
+    return Math.max(this.duration - elapsed, 0);
+  }
+
+  // セッション情報
+  getSessionInfo() {
     return {
-      isActive: this.isActive,
-      elapsedTime: this.getElapsedTime(),
-      hasAnimation: !!this.animationId,
-      hasTimeout: !!this.timeoutId,
-      recorderState: this.recorder?.state || 'none'
+      active: this.sessionActive,
+      duration: this.duration,
+      elapsed: this.getElapsedTime(),
+      remaining: this.getRemainingTime(),
+      animationCount: this.animationIds.length
     };
   }
 }
