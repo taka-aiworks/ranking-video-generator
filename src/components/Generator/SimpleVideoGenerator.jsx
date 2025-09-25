@@ -421,7 +421,7 @@ const SimpleVideoGenerator = () => {
   );
 };
 
-// 汎用スクリプト表示コンポーネント（簡易版）
+// 汎用スクリプト表示コンポーネント（AI生成内容完全対応版）
 const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
   if (!script) return null;
 
@@ -441,6 +441,8 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
     onUpdate(updated);
   };
 
+  console.log('🎬 スクリプト表示データ:', script); // デバッグ用
+
   return (
     <div className="space-y-6">
       {/* タイトル */}
@@ -458,25 +460,64 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
         )}
       </div>
 
-      {/* 内容項目 */}
-      {script.items && (
+      {/* 動画の種類・説明 */}
+      {script.videoType && (
+        <div>
+          <label className="block text-sm font-bold text-gray-300 mb-2">動画タイプ</label>
+          <div className="bg-blue-500/20 px-4 py-2 rounded-lg">
+            <span className="text-blue-300 font-bold">{script.videoType}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 動画の説明・構成 */}
+      {script.content && (
+        <div>
+          <h3 className="font-bold text-lg mb-4">📝 動画の内容・構成</h3>
+          <div className="space-y-3">
+            {script.content.description && (
+              <div className="bg-white/5 rounded-lg p-4">
+                <h4 className="font-bold text-green-400 mb-2">📋 動画の説明</h4>
+                <p className="text-gray-300">{script.content.description}</p>
+              </div>
+            )}
+            {script.content.structure && (
+              <div className="bg-white/5 rounded-lg p-4">
+                <h4 className="font-bold text-purple-400 mb-2">🎯 構成の狙い</h4>
+                <p className="text-gray-300">{script.content.structure}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* アイテム・コンテンツ一覧 */}
+      {script.items && script.items.length > 0 && (
         <div>
           <h3 className="font-bold text-lg mb-4">📋 動画内容</h3>
           <div className="space-y-4">
             {script.items.map((item, index) => (
               <div key={index} className="bg-white/5 rounded-lg p-4">
                 <div className="flex items-start space-x-4">
+                  {/* ランク表示（あれば） */}
                   {item.rank && (
                     <div className="bg-yellow-400 text-black font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm">
                       {item.rank}
                     </div>
                   )}
+                  {/* ステップ番号（あれば） */}
+                  {item.id && !item.rank && (
+                    <div className="bg-blue-400 text-white font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm">
+                      {item.id}
+                    </div>
+                  )}
+                  
                   <div className="flex-1">
                     {isEditing ? (
                       <div className="space-y-3">
                         <input
                           type="text"
-                          value={item.name || ''}
+                          value={item.name || item.title || ''}
                           onChange={(e) => {
                             const newItems = [...script.items];
                             newItems[index] = { ...newItems[index], name: e.target.value };
@@ -486,10 +527,11 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
                           placeholder="項目名"
                         />
                         <textarea
-                          value={item.description || ''}
+                          value={item.description || item.content?.main || item.content?.details || ''}
                           onChange={(e) => {
                             const newItems = [...script.items];
-                            newItems[index] = { ...newItems[index], description: e.target.value };
+                            if (!newItems[index].content) newItems[index].content = {};
+                            newItems[index].content.main = e.target.value;
                             updateField('items', newItems);
                           }}
                           className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
@@ -499,9 +541,52 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
                       </div>
                     ) : (
                       <div>
-                        <h4 className="font-bold text-white mb-2">{item.name}</h4>
-                        {item.price && <p className="text-green-400 font-bold mb-2">{item.price}</p>}
-                        <p className="text-gray-300">{item.description}</p>
+                        {/* アイテム名・タイトル */}
+                        <h4 className="font-bold text-white mb-2">
+                          {item.name || item.title || `アイテム ${index + 1}`}
+                        </h4>
+                        
+                        {/* 価格（あれば） */}
+                        {item.price && (
+                          <p className="text-green-400 font-bold mb-2">{item.price}</p>
+                        )}
+                        
+                        {/* メイン内容 */}
+                        {item.content?.main && (
+                          <p className="text-gray-300 mb-2">{item.content.main}</p>
+                        )}
+                        
+                        {/* 詳細内容 */}
+                        {item.content?.details && (
+                          <p className="text-gray-300 mb-2">{item.content.details}</p>
+                        )}
+                        
+                        {/* 追加情報 */}
+                        {item.content?.extra && (
+                          <div className="bg-blue-500/20 p-3 rounded mt-3">
+                            <p className="text-sm text-blue-300">{item.content.extra}</p>
+                          </div>
+                        )}
+                        
+                        {/* 従来の description */}
+                        {item.description && !item.content && (
+                          <p className="text-gray-300">{item.description}</p>
+                        )}
+                        
+                        {/* 特徴・features */}
+                        {item.features && item.features.length > 0 && (
+                          <div className="mt-3">
+                            <div className="flex flex-wrap gap-2">
+                              {item.features.map((feature, i) => (
+                                <span key={i} className="bg-purple-500/30 text-purple-200 px-2 py-1 rounded text-sm">
+                                  ✓ {feature}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* パーソナルコメント */}
                         {item.personalComment && (
                           <div className="bg-purple-500/20 p-3 rounded mt-3">
                             <p className="text-sm text-gray-300">{item.personalComment}</p>
@@ -516,6 +601,55 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
           </div>
         </div>
       )}
+
+      {/* シーン構成（詳細表示） */}
+      {script.scenes && script.scenes.length > 0 && (
+        <div>
+          <h3 className="font-bold text-lg mb-4">🎬 シーン構成</h3>
+          <div className="space-y-3">
+            {script.scenes.map((scene, index) => (
+              <div key={index} className="bg-white/5 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-bold text-yellow-400">
+                    シーン {index + 1}: {scene.type}
+                  </span>
+                  <span className="text-sm text-gray-400">
+                    {scene.startTime}s - {scene.endTime}s
+                  </span>
+                </div>
+                <div className="text-sm text-gray-300">
+                  {scene.content?.mainText && (
+                    <div><strong>メイン:</strong> {scene.content.mainText}</div>
+                  )}
+                  {scene.content?.subText && (
+                    <div><strong>サブ:</strong> {scene.content.subText}</div>
+                  )}
+                  {scene.content?.announcement && (
+                    <div><strong>アナウンス:</strong> {scene.content.announcement}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 動画設定 */}
+      <div className="bg-white/5 rounded-lg p-4">
+        <h3 className="font-bold text-lg mb-3">⚙️ 動画設定</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-gray-400">時間:</span>
+            <span className="text-white ml-2">{script.duration}秒</span>
+          </div>
+          <div>
+            <span className="text-gray-400">サイズ:</span>
+            <span className="text-white ml-2">
+              {script.canvas?.width}×{script.canvas?.height}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
