@@ -1,73 +1,104 @@
-// src/services/generators/contentAnalyzer.js - 動画時間自動計算システム
+// src/services/generators/contentAnalyzer.js - 汎用動画時間計算
 
-class ContentAnalyzer {
+class UniversalContentAnalyzer {
   constructor() {
     this.minDurations = {
-      short: 15,   // ショート動画最低15秒
-      medium: 20,  // ミディアム動画最低20秒
-      hybrid: 15   // ハイブリッドは短い方に合わせる
+      short: 15,
+      medium: 30,
+      auto: 15
     };
     
     this.maxDurations = {
-      short: 60,   // ショート動画最大60秒
-      medium: 480, // ミディアム動画最大8分
-      hybrid: 30   // ハイブリッドは適度な長さ
+      short: 60,
+      medium: 480,
+      auto: 60 // 自動判断時はショート寄り
     };
   }
 
-  // メイン計算関数
+  // メイン計算関数（汎用版）
   calculateOptimalDuration(keyword, template, format) {
-    console.log('⏰ 動画時間計算開始:', { keyword, template, format });
+    console.log('⏰ 汎用動画時間計算開始:', { keyword, template, format });
     
     // 基準時間の計算
-    const baseDuration = this.getBaseDuration(template, format);
+    const baseDuration = this.getUniversalBaseDuration(keyword, format);
     
     // キーワード複雑度による調整
     const keywordAdjustment = this.analyzeKeywordComplexity(keyword);
     
-    // テンプレート特有の調整
-    const templateAdjustment = this.getTemplateAdjustment(template, format);
+    // フォーマット調整
+    const formatAdjustment = this.getFormatAdjustment(format);
     
     // 最終計算
     const calculatedDuration = Math.round(
-      baseDuration + keywordAdjustment + templateAdjustment
+      baseDuration + keywordAdjustment + formatAdjustment
     );
     
     // 制限内に収める
     const finalDuration = this.enforceLimits(calculatedDuration, format);
     
-    console.log(`✅ 動画時間計算完了: ${finalDuration}秒 (基準:${baseDuration}s + キーワード:${keywordAdjustment}s + テンプレート:${templateAdjustment}s)`);
+    console.log(`✅ 汎用時間計算完了: ${finalDuration}秒 (基準:${baseDuration}s + キーワード:${keywordAdjustment}s + フォーマット:${formatAdjustment}s)`);
     
     return finalDuration;
   }
 
-  // 基準時間の設定
-  getBaseDuration(template, format) {
+  // 汎用基準時間設定
+  getUniversalBaseDuration(keyword, format) {
+    // キーワードの種類を分析
+    const keywordType = this.analyzeKeywordType(keyword);
+    
     const baseTimes = {
       short: {
-        ranking: 25,    // ランキングは少し長め
-        comparison: 30,  // 比較は詳細が必要
-        tutorial: 35,    // チュートリアルは説明が必要
-        news: 20        // ニュースは簡潔に
+        ranking: 25,      // ランキング系
+        comparison: 30,   // 比較系
+        howto: 35,        // やり方系
+        review: 28,       // レビュー系
+        explanation: 22,  // 解説系
+        list: 20          // リスト系
       },
       medium: {
-        ranking: 90,    // 1分半でしっかり説明
-        comparison: 120, // 2分で詳細比較
-        tutorial: 180,   // 3分でステップバイステップ
-        news: 60        // 1分でニュース解説
+        ranking: 90,
+        comparison: 120,
+        howto: 180,
+        review: 100,
+        explanation: 80,
+        list: 70
       },
-      hybrid: {
-        ranking: 25,    // ハイブリッドは短めに
+      auto: {
+        ranking: 25,
         comparison: 30,
-        tutorial: 35,
-        news: 20
+        howto: 35,
+        review: 28,
+        explanation: 22,
+        list: 20
       }
     };
     
-    return baseTimes[format]?.[template] || baseTimes[format]?.ranking || 25;
+    return baseTimes[format]?.[keywordType] || baseTimes[format]?.explanation || 25;
   }
 
-  // キーワード複雑度分析
+  // キーワード種類分析
+  analyzeKeywordType(keyword) {
+    const patterns = {
+      ranking: ['おすすめ', 'ランキング', 'TOP', 'ベスト', '選'],
+      comparison: ['vs', 'VS', 'どっち', '比較', '違い'],
+      howto: ['やり方', '方法', '始め方', 'こと', 'やったほうがいい'],
+      review: ['レビュー', '使ってみた', '試してみた', '感想'],
+      explanation: ['とは', 'について', '解説', '詳しく'],
+      list: ['まとめ', '一覧', 'リスト']
+    };
+    
+    for (const [type, keywords] of Object.entries(patterns)) {
+      if (keywords.some(k => keyword.includes(k))) {
+        console.log(`📋 キーワード種類判定: ${type}`);
+        return type;
+      }
+    }
+    
+    console.log('📋 キーワード種類判定: explanation (デフォルト)');
+    return 'explanation';
+  }
+
+  // キーワード複雑度分析（既存）
   analyzeKeywordComplexity(keyword) {
     console.log('🔍 キーワード複雑度分析:', keyword);
     
@@ -80,71 +111,60 @@ class ContentAnalyzer {
     
     // 文字数による調整
     if (keywordLength > 10) adjustment += 3;
-    if (keywordLength > 15) adjustment += 2;
+    if (keywordLength > 20) adjustment += 3;
     
     // 複合キーワード
     if (hasSpaces) adjustment += 5;
     
-    // 数値が含まれる（型番など）
+    // 数値が含まれる
     if (hasNumbers) adjustment += 2;
     
     // 専門的なキーワード
     if (isSpecific) adjustment += 3;
     
-    return Math.min(adjustment, 15); // 最大15秒の調整
+    return Math.min(adjustment, 15);
   }
 
-  // 専門キーワードの判定
+  // 専門キーワード判定（拡張版）
   isSpecificKeyword(keyword) {
-    const specificTerms = [
+    const specificCategories = [
       // 技術系
-      'iPhone', 'iPad', 'MacBook', 'Windows', 'Android',
+      'iPhone', 'iPad', 'MacBook', 'Android', 'Windows',
+      'プログラミング', 'AI', '機械学習',
+      
+      // 商品系
       'ワイヤレスイヤホン', 'スマートウォッチ', 'ノートPC',
+      '掃除機', '炊飯器', 'エアコン',
       
       // 美容・健康
       '美容液', 'クリーム', 'サプリメント', 'プロテイン',
+      '化粧水', 'ファンデーション',
       
-      // 家電
-      '掃除機', '炊飯器', '冷蔵庫', 'エアコン', 'テレビ',
+      // ライフスタイル
+      '投資', '副業', '転職', '節約', '子育て',
+      '筋トレ', 'ダイエット', '料理',
       
-      // ファッション
-      'スニーカー', 'バッグ', '時計', 'アクセサリー'
+      // エンタメ
+      '映画', 'アニメ', 'ゲーム', 'マンガ'
     ];
     
-    return specificTerms.some(term => 
+    return specificCategories.some(term => 
       keyword.toLowerCase().includes(term.toLowerCase())
     );
   }
 
-  // テンプレート別調整
-  getTemplateAdjustment(template, format) {
+  // フォーマット調整
+  getFormatAdjustment(format) {
     const adjustments = {
-      ranking: {
-        short: 0,    // ランキングは基準通り
-        medium: 10,  // ミディアムは少し長め
-        hybrid: 0
-      },
-      comparison: {
-        short: 5,    // 比較は少し長めが必要
-        medium: 20,  // ミディアムはしっかり比較
-        hybrid: 5
-      },
-      tutorial: {
-        short: 8,    // チュートリアルは説明が必要
-        medium: 30,  // ミディアムは詳細説明
-        hybrid: 8
-      },
-      news: {
-        short: -3,   // ニュースは簡潔に
-        medium: 0,   // ミディアムは標準
-        hybrid: -3
-      }
+      short: 0,     // ショートは基準通り
+      medium: 15,   // ミディアムは少し長め
+      auto: 0       // 自動判断は基準通り
     };
     
-    return adjustments[template]?.[format] || 0;
+    return adjustments[format] || 0;
   }
 
-  // 制限内に収める
+  // 制限適用
   enforceLimits(duration, format) {
     const min = this.minDurations[format];
     const max = this.maxDurations[format];
@@ -162,12 +182,12 @@ class ContentAnalyzer {
     return duration;
   }
 
-  // フォーマット別推奨時間
+  // フォーマット推奨時間
   getRecommendedDurations(format) {
     const recommendations = {
       short: {
         min: 15,
-        optimal: 30,
+        optimal: 25,
         max: 60,
         description: 'TikTok・YouTube Shorts最適化'
       },
@@ -177,72 +197,17 @@ class ContentAnalyzer {
         max: 480,
         description: 'YouTube通常動画・収益化対応'
       },
-      hybrid: {
+      auto: {
         min: 15,
-        optimal: 25,
-        max: 30,
-        description: 'ハイブリッド戦略・導入動画'
+        optimal: 30,
+        max: 60,
+        description: 'AI自動判断・最適化'
       }
     };
     
-    return recommendations[format] || recommendations.medium;
-  }
-
-  // 時間調整の提案
-  suggestTimeAdjustments(currentDuration, keyword, template, format) {
-    const optimal = this.calculateOptimalDuration(keyword, template, format);
-    const difference = optimal - currentDuration;
-    
-    if (Math.abs(difference) <= 2) {
-      return {
-        adjustment: 'none',
-        message: '適切な時間です',
-        suggestedDuration: currentDuration
-      };
-    }
-    
-    if (difference > 0) {
-      return {
-        adjustment: 'increase',
-        message: `${difference}秒延長を推奨します`,
-        suggestedDuration: optimal,
-        reasons: this.getExtensionReasons(template, format)
-      };
-    } else {
-      return {
-        adjustment: 'decrease',
-        message: `${Math.abs(difference)}秒短縮を推奨します`,
-        suggestedDuration: optimal,
-        reasons: this.getReductionReasons(template, format)
-      };
-    }
-  }
-
-  // 延長理由の提案
-  getExtensionReasons(template, format) {
-    const reasons = {
-      ranking: ['各項目の詳細説明', '比較要素の追加', '評価基準の明示'],
-      comparison: ['比較項目の詳細化', '価格差の説明', '使用シーン提案'],
-      tutorial: ['手順の詳細化', '注意点の追加', '代替方法の紹介'],
-      news: ['背景情報の追加', 'トレンド分析', '今後の予測']
-    };
-    
-    return reasons[template] || reasons.ranking;
-  }
-
-  // 短縮理由の提案
-  getReductionReasons(template, format) {
-    const reasons = {
-      ranking: ['重要項目に絞り込み', '冗長な説明を削除', '視覚的表現を強化'],
-      comparison: ['主要差異のみ強調', '結論を明確に', 'インパクト重視'],
-      tutorial: ['最重要手順のみ', 'シンプル化', '実演中心'],
-      news: ['要点のみ抽出', 'インパクト重視', '簡潔なまとめ']
-    };
-    
-    return reasons[template] || reasons.ranking;
+    return recommendations[format] || recommendations.auto;
   }
 }
 
-// シングルトンインスタンス
-const contentAnalyzer = new ContentAnalyzer();
-export default contentAnalyzer;
+const universalContentAnalyzer = new UniversalContentAnalyzer();
+export default universalContentAnalyzer;

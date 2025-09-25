@@ -1,0 +1,523 @@
+// src/components/Generator/SimpleVideoGenerator.jsx - シンプル汎用版
+
+import React, { useState, useRef, useCallback } from 'react';
+import { Play, Download, Zap, Smartphone, Monitor, Video, Edit3, Save, AlertCircle, CheckCircle } from 'lucide-react';
+
+// サービス層インポート
+import openaiService from '../../services/api/openai.js';
+import videoComposer from '../../services/video/videoComposer.js';
+import contentAnalyzer from '../../services/generators/contentAnalyzer.js';
+
+const SimpleVideoGenerator = () => {
+  // === 基本状態 ===
+  const [keyword, setKeyword] = useState('');
+  const [format, setFormat] = useState('short');
+  const [tab, setTab] = useState('input');
+  
+  // === 生成状態 ===
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState('');
+  const [video, setVideo] = useState(null);
+  const [error, setError] = useState(null);
+
+  // === 編集状態 ===
+  const [generatedScript, setGeneratedScript] = useState(null);
+  const [isEditingScript, setIsEditingScript] = useState(false);
+  const [editableScript, setEditableScript] = useState(null);
+
+  // === Canvas参照 ===
+  const canvasRef = useRef(null);
+
+  // === フォーマット設定 ===
+  const formats = [
+    { 
+      id: 'short', 
+      name: 'ショート動画', 
+      icon: Smartphone, 
+      desc: '15-60秒の縦型動画', 
+      platform: 'TikTok, YouTube Shorts'
+    },
+    { 
+      id: 'medium', 
+      name: 'ミディアム動画', 
+      icon: Monitor, 
+      desc: '3-8分の横型動画', 
+      platform: 'YouTube通常動画'
+    }
+  ];
+
+  // === スクリプト保存 ===
+  const handleSaveScript = useCallback(() => {
+    if (editableScript) {
+      setGeneratedScript(editableScript);
+      setIsEditingScript(false);
+      console.log('✅ スクリプト保存完了:', editableScript.title);
+    }
+  }, [editableScript]);
+
+  // === 編集開始 ===
+  const handleStartEditing = useCallback(() => {
+    if (generatedScript) {
+      setEditableScript(JSON.parse(JSON.stringify(generatedScript))); // ディープコピー
+      setIsEditingScript(true);
+    }
+  }, [generatedScript]);
+
+  // === AI動画生成（シンプル版） ===
+  const handleGenerate = useCallback(async () => {
+    if (!keyword.trim()) {
+      setError('キーワードを入力してください');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setProgress(0);
+    setTab('generating');
+    setGeneratedScript(null);
+
+    try {
+      // AI による動画時間自動計算
+      const optimalDuration = contentAnalyzer.calculateOptimalDuration(keyword, 'auto', format);
+      console.log(`⏰ AI計算時間 (${format}):`, optimalDuration + '秒');
+
+      setStatus(`🧠 "${keyword}" の動画設計をAIが作成中...`);
+      setProgress(20);
+
+      // AI設計図生成（テンプレート指定なし - AIが自動判断）
+      const videoDesign = await openaiService.generateVideoDesign(
+        keyword, 
+        'auto', // テンプレートはAIが自動判断
+        format, 
+        optimalDuration
+      );
+
+      // 生成されたスクリプトを保存
+      setGeneratedScript(videoDesign);
+      setTab('script');
+      
+      setStatus('📝 AI設計図完成！内容を確認できます');
+      setProgress(40);
+      
+      // Canvas初期化
+      videoComposer.initCanvas(canvasRef, videoDesign);
+      
+      setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
+      setProgress(50);
+      
+      // 動画生成
+      const generatedVideo = await videoComposer.generateVideoFromDesign(
+        videoDesign,
+        (videoProgress) => {
+          setProgress(50 + (videoProgress * 0.45)); // 50-95%
+        }
+      );
+
+      // 結果保存
+      const result = {
+        title: videoDesign.title,
+        duration: `${videoDesign.duration}秒`,
+        format: `${videoDesign.canvas.width}x${videoDesign.canvas.height}`,
+        thumbnail: format === 'short' ? '📱' : '🎬',
+        description: videoDesign.metadata?.description || '',
+        tags: videoDesign.metadata?.tags || [],
+        videoData: generatedVideo,
+        aiDesign: videoDesign
+      };
+
+      setStatus('✅ AI動画生成完了！');
+      setProgress(100);
+      setVideo(result);
+
+      // 結果表示へ移行
+      setTimeout(() => {
+        setTab('result');
+      }, 1500);
+
+    } catch (err) {
+      console.error('AI動画生成エラー:', err);
+      setError('AI動画生成でエラーが発生しました: ' + err.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [keyword, format]);
+
+  // === ダウンロード ===
+  const downloadVideo = useCallback((videoData, filename) => {
+    if (!videoData?.url) return;
+    
+    const a = document.createElement('a');
+    a.href = videoData.url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
+  // === リセット ===
+  const resetAll = useCallback(() => {
+    setKeyword('');
+    setFormat('short');
+    setTab('input');
+    setIsGenerating(false);
+    setProgress(0);
+    setStatus('');
+    setVideo(null);
+    setError(null);
+    setGeneratedScript(null);
+    setIsEditingScript(false);
+    setEditableScript(null);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
+      {/* Hidden Canvas */}
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Header */}
+      <div className="bg-black/20 backdrop-blur-sm border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-yellow-400 to-orange-500 p-2 rounded-lg">
+                <Zap className="w-6 h-6 text-black" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">🤖 AI汎用動画生成ツール</h1>
+                <p className="text-sm text-gray-300">キーワード入力 → AI判断 → 編集 → 動画生成</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="max-w-4xl mx-auto px-6 pt-6">
+        <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
+          {[
+            { id: 'input', name: '入力', icon: Zap },
+            { id: 'script', name: 'スクリプト確認', icon: Edit3 },
+            { id: 'generating', name: '生成中', icon: Video },
+            { id: 'result', name: '完成', icon: CheckCircle }
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => !isGenerating && setTab(t.id)}
+              disabled={isGenerating && t.id !== 'generating'}
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-md transition-all ${
+                tab === t.id ? 'bg-white/20 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-50'
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              <span>{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 bg-red-500/20 border border-red-500/30 rounded-lg p-4 flex items-center space-x-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <span className="text-red-400">{error}</span>
+            <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* 入力タブ */}
+        {tab === 'input' && (
+          <div className="space-y-6">
+            {/* キーワード入力 */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+              <h2 className="text-xl font-bold mb-4">🎯 何について動画を作りますか？</h2>
+              <input
+                type="text"
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                placeholder="例: ワイヤレスイヤホン / 子育てでやったほうがいいこと / iPhone vs Android"
+                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-yellow-400 focus:outline-none text-white placeholder-gray-400 text-lg"
+              />
+              
+              {/* サンプルキーワード */}
+              <div className="mt-4">
+                <p className="text-sm text-gray-400 mb-2">💡 サンプルキーワード:</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'ワイヤレスイヤホン おすすめ',
+                    '子育てでやったほうがいいこと',
+                    'iPhone vs Android',
+                    '副業の始め方',
+                    'おすすめ映画',
+                    '節約術',
+                    '筋トレ 初心者',
+                    '投資 始め方'
+                  ].map(k => (
+                    <button
+                      key={k}
+                      onClick={() => setKeyword(k)}
+                      className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors"
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-blue-500/20 rounded-lg">
+                <div className="text-sm text-blue-400 font-bold mb-2">🤖 AIが自動で決めること</div>
+                <div className="text-xs text-gray-300 space-y-1">
+                  <div>• 動画の形式（ランキング/比較/解説/チュートリアル等）</div>
+                  <div>• 具体的な内容・商品・サービス</div>
+                  <div>• 動画の時間配分</div>
+                  <div>• 視覚的なデザイン</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 動画形式選択 */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+              <h2 className="text-xl font-bold mb-4">📱 動画形式</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {formats.map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setFormat(f.id)}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      format === f.id ? 'border-yellow-400 bg-white/20' : 'border-white/20 hover:bg-white/10'
+                    }`}
+                  >
+                    <f.icon className="w-8 h-8 mb-2 text-yellow-400" />
+                    <div className="font-bold">{f.name}</div>
+                    <div className="text-sm text-gray-400 mb-2">{f.desc}</div>
+                    <div className="text-xs text-green-400">{f.platform}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 生成ボタン */}
+            <button
+              onClick={handleGenerate}
+              disabled={!keyword || isGenerating}
+              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 disabled:opacity-50 text-black font-bold py-6 rounded-xl text-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:scale-100"
+            >
+              <Zap className="w-6 h-6" />
+              <span>🤖 AIに動画を作ってもらう</span>
+            </button>
+          </div>
+        )}
+
+        {/* スクリプト確認タブ */}
+        {tab === 'script' && (
+          <div className="space-y-6">
+            {!generatedScript ? (
+              <div className="bg-white/10 rounded-xl p-8 text-center">
+                <div className="text-6xl mb-4">📝</div>
+                <div className="text-xl font-bold mb-2">まだスクリプトがありません</div>
+                <div className="text-gray-400">
+                  まずキーワードを入力して動画を生成してください
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold">📝 AI生成スクリプト</h2>
+                  <div className="flex space-x-2">
+                    {!isEditingScript ? (
+                      <button
+                        onClick={handleStartEditing}
+                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        <span>編集</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleSaveScript}
+                        className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>保存</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* スクリプト表示・編集 */}
+                <UniversalScriptDisplay 
+                  script={isEditingScript ? editableScript : generatedScript}
+                  isEditing={isEditingScript}
+                  onUpdate={setEditableScript}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 生成中タブ */}
+        {tab === 'generating' && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 text-center">
+            <div className="text-2xl font-bold mb-4">🤖 {status || 'AIが動画を作成中...'}</div>
+            <div className="w-full bg-white/20 rounded-full h-4 mb-6">
+              <div 
+                className="bg-gradient-to-r from-yellow-400 to-orange-500 h-4 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-lg font-bold text-yellow-400 mb-4">
+              {Math.floor(progress)}% 完了
+            </div>
+          </div>
+        )}
+
+        {/* 完成タブ */}
+        {tab === 'result' && video && (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-yellow-400 mb-2">🎉 動画完成！</h2>
+              <p className="text-gray-400">AIが作成した動画をご確認ください</p>
+            </div>
+
+            <div className="bg-white/10 rounded-xl p-6 text-center">
+              <div className="text-4xl mb-4">{video.thumbnail}</div>
+              <div className="font-bold text-xl mb-2">{video.title}</div>
+              <div className="text-gray-400 mb-2">{video.duration} | {video.videoData.size}</div>
+              <div className="text-sm text-yellow-400 mb-6">{video.format}</div>
+              
+              <div className="flex justify-center space-x-4 mb-6">
+                <button 
+                  onClick={() => window.open(video.videoData.url)}
+                  className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg flex items-center space-x-2"
+                >
+                  <Play className="w-5 h-5" />
+                  <span>再生</span>
+                </button>
+                <button 
+                  onClick={() => downloadVideo(video.videoData, `ai_video_${keyword}.webm`)}
+                  className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg flex items-center space-x-2"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>ダウンロード</span>
+                </button>
+              </div>
+
+              <div className="text-center">
+                <button
+                  onClick={resetAll}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-6 py-3 rounded-lg font-bold"
+                >
+                  🆕 新しい動画を作る
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 汎用スクリプト表示コンポーネント（簡易版）
+const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
+  if (!script) return null;
+
+  const updateField = (path, value) => {
+    if (!isEditing || !onUpdate) return;
+    
+    const updated = { ...script };
+    const keys = path.split('.');
+    let current = updated;
+    
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) current[keys[i]] = {};
+      current = current[keys[i]];
+    }
+    
+    current[keys[keys.length - 1]] = value;
+    onUpdate(updated);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* タイトル */}
+      <div>
+        <label className="block text-sm font-bold text-gray-300 mb-2">動画タイトル</label>
+        {isEditing ? (
+          <input
+            type="text"
+            value={script.title || ''}
+            onChange={(e) => updateField('title', e.target.value)}
+            className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white"
+          />
+        ) : (
+          <div className="text-xl font-bold text-yellow-400">{script.title}</div>
+        )}
+      </div>
+
+      {/* 内容項目 */}
+      {script.items && (
+        <div>
+          <h3 className="font-bold text-lg mb-4">📋 動画内容</h3>
+          <div className="space-y-4">
+            {script.items.map((item, index) => (
+              <div key={index} className="bg-white/5 rounded-lg p-4">
+                <div className="flex items-start space-x-4">
+                  {item.rank && (
+                    <div className="bg-yellow-400 text-black font-bold rounded-full w-8 h-8 flex items-center justify-center text-sm">
+                      {item.rank}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          value={item.name || ''}
+                          onChange={(e) => {
+                            const newItems = [...script.items];
+                            newItems[index] = { ...newItems[index], name: e.target.value };
+                            updateField('items', newItems);
+                          }}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                          placeholder="項目名"
+                        />
+                        <textarea
+                          value={item.description || ''}
+                          onChange={(e) => {
+                            const newItems = [...script.items];
+                            newItems[index] = { ...newItems[index], description: e.target.value };
+                            updateField('items', newItems);
+                          }}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                          rows="3"
+                          placeholder="詳細説明"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <h4 className="font-bold text-white mb-2">{item.name}</h4>
+                        {item.price && <p className="text-green-400 font-bold mb-2">{item.price}</p>}
+                        <p className="text-gray-300">{item.description}</p>
+                        {item.personalComment && (
+                          <div className="bg-purple-500/20 p-3 rounded mt-3">
+                            <p className="text-sm text-gray-300">{item.personalComment}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SimpleVideoGenerator;

@@ -9,46 +9,49 @@ class OpenAIService {
     this.model = API_CONFIG.openai.model;
   }
 
-  // 改良版プロンプト（動画時間を確実に設定）
+  // 汎用AIプロンプト（すべてのテンプレート・キーワード対応）
   getVideoDesignPrompt(keyword, template, format, duration) {
     const formatSpecs = {
       short: { 
         width: 1080, 
         height: 1920, 
         aspect: '9:16縦型', 
-        platform: 'TikTok/YouTube Shorts',
-        maxItems: Math.min(Math.floor(duration / 5), 3), // 5秒/アイテム、最大3個
-        timePerItem: Math.max(Math.floor(duration / 3), 5) // 最低5秒/アイテム
+        maxItems: Math.min(Math.floor(duration / 8), 3),
+        timePerItem: Math.max(Math.floor(duration / 3), 8)
       },
       medium: { 
         width: 1920, 
         height: 1080, 
         aspect: '16:9横型', 
-        platform: 'YouTube通常動画',
-        maxItems: Math.min(Math.floor(duration / 10), 5), // 10秒/アイテム、最大5個
-        timePerItem: Math.max(Math.floor(duration / 5), 4) // 最低4秒/アイテム
+        maxItems: Math.min(Math.floor(duration / 15), 5),
+        timePerItem: Math.max(Math.floor(duration / 4), 12)
       }
     };
     
     const spec = formatSpecs[format] || formatSpecs.medium;
     
-    return `あなたは動画制作のプロです。以下の指定で${template}形式の動画設計図を作成してください。
+    // テンプレート別プロンプト
+    const templatePrompts = {
+      ranking: this.getRankingPrompt(keyword, spec, duration),
+      comparison: this.getComparisonPrompt(keyword, spec, duration),
+      tutorial: this.getTutorialPrompt(keyword, spec, duration),
+      news: this.getNewsPrompt(keyword, spec, duration)
+    };
+    
+    return templatePrompts[template] || templatePrompts.ranking;
+  }
 
-**最重要条件:**
-- **動画時間**: 必ず${duration}秒（短縮不可）
-- キーワード: ${keyword}
-- 形式: ${spec.aspect} (${spec.width}x${spec.height})
-- アイテム数: ${spec.maxItems}個
-- 各アイテム表示時間: ${spec.timePerItem}秒
+  // ランキング形式プロンプト
+  getRankingPrompt(keyword, spec, duration) {
+    return `あなたは${keyword}の専門家です。${keyword}について、実在する具体的な商品・サービスでランキング形式の動画を作成してください。
 
-**時間配分の例（${duration}秒動画）:**
-- タイトル表示: 0-3秒
-- アイテム1: 3-${3 + spec.timePerItem}秒
-- アイテム2: ${3 + spec.timePerItem}-${3 + spec.timePerItem * 2}秒
-- アイテム3: ${3 + spec.timePerItem * 2}-${duration}秒
-- まとめ: ${Math.max(duration - 3, duration * 0.9)}-${duration}秒
+**絶対条件:**
+- **${keyword}に関する実在する商品・サービス**のみ使用
+- **汎用的な名前は禁止**（「商品A」「○○製品」「サービス1」など）
+- **リアルな情報**を基づいて生成（価格・仕様・特徴）
+- 動画時間: **正確に${duration}秒**
 
-**必須JSON構造（動画時間${duration}秒）:**
+**出力形式（${duration}秒ランキング動画）:**
 \`\`\`json
 {
   "title": "【2024年最新】${keyword} おすすめランキングTOP${spec.maxItems}",
@@ -58,73 +61,134 @@ class OpenAIService {
     "height": ${spec.height},
     "backgroundColor": "#1e3a8a,#7c3aed,#db2777"
   },
-  "scenes": [
-    {
-      "startTime": 0,
-      "endTime": 3,
-      "type": "title",
-      "content": {
-        "mainText": "【最新版】${keyword}ランキング",
-        "subText": "プロが厳選したTOP${spec.maxItems}",
-        "fontSize": ${format === 'short' ? 50 : 70},
-        "fontColor": "#ffffff",
-        "position": {"x": ${spec.width / 2}, "y": ${format === 'short' ? 300 : 200}}
-      }
-    },
-    {
-      "startTime": 3,
-      "endTime": ${3 + spec.timePerItem},
-      "type": "item",
-      "content": {
-        "rank": 1,
-        "name": "具体的な商品名（実在）",
-        "price": "¥XX,XXX",
-        "rating": 4.8,
-        "features": ["特徴1", "特徴2", "特徴3"],
-        "colors": {
-          "rank": "#fbbf24",
-          "name": "#ffffff", 
-          "price": "#10b981",
-          "features": "#60a5fa"
-        },
-        "positions": {
-          "rank": {"x": ${spec.width / 2}, "y": ${format === 'short' ? 500 : 350}},
-          "name": {"x": ${spec.width / 2}, "y": ${format === 'short' ? 600 : 450}},
-          "price": {"x": ${spec.width / 2}, "y": ${format === 'short' ? 680 : 520}},
-          "features": {"x": ${spec.width / 2}, "y": ${format === 'short' ? 750 : 580}}
-        },
-        "fontSizes": {
-          "rank": ${format === 'short' ? 80 : 120},
-          "name": ${format === 'short' ? 35 : 50},
-          "price": ${format === 'short' ? 28 : 40},
-          "features": ${format === 'short' ? 20 : 28}
-        }
-      }
-    }
-  ],
   "items": [
     {
       "rank": 1,
-      "name": "${keyword}の実際の商品名",
-      "price": "リアルな価格",
+      "name": "${keyword}に関する実在商品・サービス名",
+      "price": "実際の価格または相場",
       "rating": 4.8,
-      "features": ["具体的特徴1", "具体的特徴2", "具体的特徴3"]
+      "description": "${keyword}の詳細説明（なぜおすすめか、特徴、メリット）100文字以上",
+      "features": ["具体的な特徴1", "具体的な特徴2", "具体的な特徴3"],
+      "pros": ["実際のメリット1", "実際のメリット2"],
+      "cons": ["正直なデメリット1", "注意点"],
+      "targetUser": "${keyword}に関してどんな人におすすめか",
+      "personalComment": "${keyword}についての専門的な評価・感想（50文字以上）"
     }
   ],
   "metadata": {
-    "seoTitle": "【2024年最新】${keyword} おすすめランキングTOP${spec.maxItems}｜プロが厳選",
-    "description": "${keyword}のおすすめ商品を専門家が厳選してランキング形式で紹介。価格・性能・口コミを徹底比較した結果をお届けします。",
-    "tags": ["${keyword}", "${template}", "おすすめ", "2024年", "ランキング", "比較", "レビュー"]
+    "description": "${keyword}のおすすめを専門家が厳選してランキング形式で紹介。",
+    "tags": ["${keyword}", "ランキング", "おすすめ", "2024年"]
   }
 }
-\`\`\`
+\`\`\``;
+  }
 
-**重要指示:**
-1. duration は必ず ${duration} に設定
-2. ${keyword} の実在商品知識を活用
-3. scenes配列で時間軸を正確に管理
-4. ${spec.maxItems}個のアイテムを完全に表示
-5. 各シーンの時間は重複しない連続性を保つ`;
+  // 比較形式プロンプト
+  getComparisonPrompt(keyword, spec, duration) {
+    return `あなたは${keyword}の専門家です。${keyword}について、実在する2つの選択肢を詳細比較する動画を作成してください。
+
+**出力形式（${duration}秒比較動画）:**
+\`\`\`json
+{
+  "title": "${keyword} 徹底比較！どっちがおすすめ？",
+  "duration": ${duration},
+  "comparisonType": "vs",
+  "items": [
+    {
+      "position": "A",
+      "name": "${keyword}に関する実在選択肢A",
+      "price": "実際の価格・コスト",
+      "description": "選択肢Aの詳細説明（100文字以上）",
+      "strengths": ["Aの強み1", "Aの強み2", "Aの強み3"],
+      "weaknesses": ["Aの弱み1", "Aの弱み2"],
+      "suitableFor": "Aがおすすめな人・シーン"
+    },
+    {
+      "position": "B", 
+      "name": "${keyword}に関する実在選択肢B",
+      "price": "実際の価格・コスト",
+      "description": "選択肢Bの詳細説明（100文字以上）",
+      "strengths": ["Bの強み1", "Bの強み2", "Bの強み3"],
+      "weaknesses": ["Bの弱み1", "Bの弱み2"],
+      "suitableFor": "Bがおすすめな人・シーン"
+    }
+  ],
+  "conclusion": {
+    "recommendation": "専門家としての最終的なおすすめ",
+    "reasoning": "なぜそう判断したかの理由"
+  }
+}
+\`\`\``;
+  }
+
+  // チュートリアル形式プロンプト  
+  getTutorialPrompt(keyword, spec, duration) {
+    return `あなたは${keyword}の専門家です。${keyword}について、初心者でもわかるステップバイステップのチュートリアル動画を作成してください。
+
+**出力形式（${duration}秒チュートリアル動画）:**
+\`\`\`json
+{
+  "title": "初心者でもわかる！${keyword}の完全ガイド",
+  "duration": ${duration},
+  "tutorialType": "step-by-step",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "${keyword}のステップ1タイトル",
+      "description": "ステップ1の詳細説明（具体的な方法・手順）",
+      "duration": ${Math.floor(duration / 4)},
+      "tips": ["コツ1", "注意点1"],
+      "commonMistakes": ["よくある間違い1"]
+    },
+    {
+      "stepNumber": 2,
+      "title": "${keyword}のステップ2タイトル", 
+      "description": "ステップ2の詳細説明",
+      "duration": ${Math.floor(duration / 4)},
+      "tips": ["コツ2", "注意点2"],
+      "commonMistakes": ["よくある間違い2"]
+    }
+  ],
+  "summary": {
+    "keyPoints": ["重要ポイント1", "重要ポイント2"],
+    "nextSteps": "このチュートリアル後にすべきこと"
+  }
+}
+\`\`\``;
+  }
+
+  // ニュース形式プロンプト
+  getNewsPrompt(keyword, spec, duration) {
+    return `あなたは${keyword}の専門家です。${keyword}に関する2024年の最新トレンド・ニュースについて解説動画を作成してください。
+
+**出力形式（${duration}秒ニュース動画）:**
+\`\`\`json
+{
+  "title": "${keyword}の2024年最新トレンド解説",
+  "duration": ${duration},
+  "newsType": "trend-analysis",
+  "topics": [
+    {
+      "topicNumber": 1,
+      "headline": "${keyword}に関する最新トピック1",
+      "summary": "トピック1の概要説明（100文字以上）",
+      "impact": "この変化が${keyword}業界・ユーザーに与える影響",
+      "personalAnalysis": "専門家としての分析・見解（50文字以上）"
+    },
+    {
+      "topicNumber": 2,
+      "headline": "${keyword}に関する最新トピック2",
+      "summary": "トピック2の概要説明（100文字以上）", 
+      "impact": "この変化が与える影響",
+      "personalAnalysis": "専門家としての分析・見解（50文字以上）"
+    }
+  ],
+  "futureOutlook": {
+    "predictions": ["${keyword}の今後の予測1", "今後の予測2"],
+    "advice": "視聴者へのアドバイス・対策"
+  }
+}
+\`\`\``;
   }
 
   // 本番ChatGPT API呼び出し（修正版）

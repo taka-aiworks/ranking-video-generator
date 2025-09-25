@@ -1,20 +1,17 @@
-// src/config/api.js - 一時的強制設定版
-
+// src/config/api.js - 正しい環境変数管理
 
 // 環境変数の詳細確認とデバッグ
 console.log('🔍 環境変数デバッグ情報:');
 console.log('- import.meta.env:', import.meta.env);
 console.log('- VITE_OPENAI_API_KEY:', import.meta.env.VITE_OPENAI_API_KEY ? '設定済み' : '❌未設定');
-console.log('- NODE_ENV/MODE:', import.meta.env.NODE_ENV, import.meta.env.MODE);
+console.log('- .env読み込み状況:', import.meta.env.VITE_OPENAI_API_KEY ? '✅正常' : '❌失敗');
 
-// 環境変数管理 - 強制設定版
+// 環境変数管理（フォールバックなし）
 export const ENV = {
   isDevelopment: import.meta.env.DEV,
   mode: import.meta.env.MODE || 'development',
-  // 🚨 一時的: 環境変数が読めない問題を回避
-  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || FORCE_API_KEY,
-  amazonApiKey: import.meta.env.VITE_AMAZON_API_KEY || '',
-  isForced: !import.meta.env.VITE_OPENAI_API_KEY
+  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || null,
+  amazonApiKey: import.meta.env.VITE_AMAZON_API_KEY || null
 };
 
 // API設定
@@ -76,19 +73,20 @@ export const ENDPOINTS = {
   }
 };
 
-// デバッグ情報とバリデーション
+// デバッグ情報（正しい判定）
 console.log('🔑 APIキー状態確認:');
 
-if (ENV.isForced) {
-  console.warn('🚨 強制設定モードで動作中');
-  console.log('✅ OpenAI APIキー設定: 強制設定により有効');
-  console.log('💡 環境変数の問題を後で修正してください');
+if (!ENV.openaiApiKey) {
+  console.error('❌ VITE_OPENAI_API_KEY が設定されていません');
+  console.log('💡 Vite環境変数の解決方法:');
+  console.log('  1. プロジェクトルートに .env ファイルがあることを確認');
+  console.log('  2. VITE_ プレフィックスが正しいことを確認');
+  console.log('  3. 開発サーバーを完全に再起動 (Ctrl+C → npm run dev)');
+  console.log('  4. ブラウザのキャッシュクリア (Ctrl+Shift+R)');
+} else if (!ENV.openaiApiKey.startsWith('sk-')) {
+  console.warn('⚠️ APIキーの形式が正しくない可能性があります');
 } else {
-  if (!ENV.openaiApiKey.startsWith('sk-')) {
-    console.warn('⚠️ APIキーの形式が正しくない可能性があります');
-  } else {
-    console.log('✅ OpenAI APIキー設定OK:', ENV.openaiApiKey.substring(0, 20) + '...');
-  }
+  console.log('✅ OpenAI APIキー正常:', ENV.openaiApiKey.substring(0, 20) + '...');
 }
 
 console.log('🌍 動作環境:', ENV.mode);

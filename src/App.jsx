@@ -1,13 +1,13 @@
 // src/App.jsx - メインアプリケーション
 
 import React from 'react';
-import VideoGenerator from './components/Generator/VideoGenerator.jsx';
+import SimpleVideoGenerator from './components/Generator/SimpleVideoGenerator.jsx';
 import './index.css';
 
 function App() {
   return (
     <div className="App">
-      <VideoGenerator />
+      <SimpleVideoGenerator />
     </div>
   );
 }
