@@ -1,4 +1,4 @@
-// src/services/video/videoComposer.js - デバッグログ強化版
+// src/services/video/videoComposer.js - シンプル版（スライド別画像対応）
 
 import { API_CONFIG } from '../../config/api.js';
 import loopController from './loopController.js';
@@ -27,176 +27,168 @@ class VideoComposer {
     return this.canvas;
   }
 
+  // シンプルな録画開始
   startRecording(duration) {
     const stream = this.canvas.captureStream(30);
-    this.recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
-
+    this.recorder = new MediaRecorder(stream);
+    
+    const chunks = [];
+    this.recorder.ondataavailable = e => {
+      if (e.data.size > 0) {
+        chunks.push(e.data);
+        console.log('📦 データチャンク追加:', e.data.size, 'bytes');
+      }
+    };
+    
+    console.log('🔴 録画開始...', duration/1000 + 's');
+    
     return new Promise((resolve, reject) => {
-      const chunks = [];
-      
-      this.recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-
       this.recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
+        console.log('⏹️ 録画停止、ファイル作成中...');
+        const videoBlob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(videoBlob);
+        
+        console.log('✅ 動画ファイル作成完了:', (videoBlob.size / (1024*1024)).toFixed(2) + 'MB');
+        
         resolve({
-          blob,
-          url,
-          size: (blob.size / (1024 * 1024)).toFixed(2) + 'MB'
+          blob: videoBlob,
+          url: url,
+          size: (videoBlob.size / (1024*1024)).toFixed(2) + 'MB'
         });
       };
-
-      this.recorder.onerror = reject;
-      loopController.startSession(duration, this.recorder, reject);
-      this.recorder.start();
-    });
-  }
-
-  stopRecording() {
-    if (this.recorder?.state === 'recording') {
-      this.recorder.stop();
-    }
-    loopController.endSession();
-  }
-
-  // 白背景
-  drawWhiteBackground() {
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-  }
-
-  // 大きな文字
-  drawLargeText(text, x, y, size, color = '#333333', options = {}) {
-    const { 
-      maxWidth = this.canvas.width * 0.9, 
-      bold = true, 
-      align = 'center',
-      lineHeight = 1.3
-    } = options;
-    
-    this.ctx.save();
-    this.ctx.font = `${bold ? 'bold' : 'normal'} ${size}px "Hiragino Kaku Gothic ProN", "Hiragino Sans", Arial, sans-serif`;
-    this.ctx.textAlign = align;
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillStyle = color;
-    
-    const lines = this.wrapText(text, maxWidth);
-    const totalHeight = lines.length * size * lineHeight;
-    const startY = y - (totalHeight / 2) + (size * lineHeight / 2);
-    
-    lines.forEach((line, index) => {
-      const lineY = startY + (index * size * lineHeight);
-      this.ctx.fillText(line, x, lineY);
-    });
-    
-    this.ctx.restore();
-  }
-
-  // テキスト改行処理
-  wrapText(text, maxWidth) {
-    const words = text.split('');
-    const lines = [];
-    let currentLine = '';
-    
-    for (const char of words) {
-      const testLine = currentLine + char;
-      const testWidth = this.ctx.measureText(testLine).width;
       
-      if (testWidth > maxWidth && currentLine.length > 0) {
-        lines.push(currentLine);
-        currentLine = char;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    
-    return lines;
+      this.recorder.onerror = reject;
+      this.recorder.start();
+      
+      const actualDuration = duration + 15000;
+      console.log('⏰ 録画タイマー設定:', actualDuration/1000 + '秒');
+      
+      setTimeout(() => {
+        console.log('⏰ タイマー到達 - 録画停止実行');
+        if (this.recorder && this.recorder.state === 'recording') {
+          this.recorder.stop();
+        }
+      }, actualDuration);
+    });
   }
 
-  // 🆕 画像描画デバッグ強化
-  drawActualImage(optimizedImage, x, y, width, height) {
-      ('🖼️ drawActualImage呼び出し:', {
-      hasOptimizedImage: !!optimizedImage,
-      hasCanvas: !!(optimizedImage?.canvas),
-      isPlaceholder: optimizedImage?.isPlaceholder,
-      x, y, width, height
-    });
+  // 画像付き動画生成
+  async generateVideoWithImages(videoDesign, slideImages, onProgress) {
+    const safeSlideImages = slideImages || [];
+    console.log('🖼️ slideImages受信:', safeSlideImages.length, '件');
 
-    if (!optimizedImage) {
-      console.log('⚠️ optimizedImage が null/undefined');
-      this.drawImagePlaceholder(x, y, width, height, '画像なし');
-      return false;
+    if (this.isGenerating) {
+      throw new Error('Already generating video');
     }
+
+    this.isGenerating = true;
+    const totalDuration = (videoDesign.duration || 30) * 1000;
 
     try {
-      if (optimizedImage.canvas) {
-        //console.log('✅ Canvas描画実行:', optimizedImage.canvas.width + 'x' + optimizedImage.canvas.height);
-        this.ctx.drawImage(optimizedImage.canvas, x, y, width, height);
-        return true;
-      } else if (optimizedImage.isPlaceholder) {
-        console.log('📝 プレースホルダー描画:', optimizedImage.keyword);
-        this.ctx.save();
-        this.ctx.fillStyle = optimizedImage.backgroundColor || '#f8f9fa';
-        this.ctx.fillRect(x, y, width, height);
-        this.ctx.strokeStyle = '#dee2e6';
-        this.ctx.lineWidth = 3;
-        this.ctx.strokeRect(x, y, width, height);
-        this.ctx.fillStyle = '#6c757d';
-        this.ctx.font = 'bold 32px sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(optimizedImage.keyword || '関連画像', x + width/2, y + height/2);
-        this.ctx.restore();
-        return true;
-      } else {
-        console.log('⚠️ optimizedImage形式不正:', Object.keys(optimizedImage));
+      loopController.startSession(
+        (totalDuration / 1000) + 25,
+        this.recorder, 
+        (reason) => {
+          console.error('🚨 強制停止:', reason);
+          throw new Error(`録画が強制停止されました: ${reason}`);
+        }
+      );
+      
+      console.log('🔴 録画処理開始');
+      const recording = this.startRecording(totalDuration);
+      console.log('✅ MediaRecorder開始完了');
+      
+      let currentSlideIndex = 0;
+      const totalSlides = 1 + (videoDesign.items.length * 3) + 1;
+      
+      console.log('📋 スライド計画:', totalSlides + 'スライド予定');
+      
+      // タイトルスライド
+      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] タイトルスライド描画`);
+      const titleImage = this.getSlideImage(safeSlideImages, currentSlideIndex);
+      this.renderTitleSlide(videoDesign, titleImage);
+      
+      await this.sleep(3000);
+      currentSlideIndex++;
+
+      // 各項目のスライド
+      for (let i = 0; i < videoDesign.items.length; i++) {
+        const item = videoDesign.items[i];
+        
+        for (let j = 0; j < 3; j++) {
+          console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] 項目${i+1} サブ${j+1} 描画`);
+          
+          const itemImage = this.getSlideImage(safeSlideImages, currentSlideIndex);
+          
+          this.renderItemSlide(item, i + 1, j, itemImage);
+          
+          await this.sleep(4000);
+          currentSlideIndex++;
+          
+          if (onProgress) {
+            const progress = (currentSlideIndex / totalSlides) * 100;
+            onProgress(Math.round(progress));
+            console.log('📊 進捗:', Math.round(progress) + '%');
+          }
+        }
       }
+
+      // まとめスライド
+      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] まとめスライド描画`);
+      const summaryImage = this.getSlideImage(safeSlideImages, currentSlideIndex);
+      this.renderSummarySlide(videoDesign, summaryImage);
+      
+      await this.sleep(5000);
+      
+      console.log('🏁 全スライド描画完了、録画停止待機');
+      const videoData = await recording;
+      
+      loopController.endSession();
+      
+      console.log('✅ 画像付き動画生成完了');
+      
+      return {
+        success: true,
+        videoBlob: videoData.blob,
+        url: videoData.url,
+        duration: totalDuration / 1000,
+        slideCount: currentSlideIndex + 1,
+        imagesUsed: safeSlideImages.length,
+        size: videoData.size
+      };
+      
     } catch (error) {
-      console.error('🚨 画像描画エラー:', error);
+      console.error('🚨 画像付き動画生成エラー:', error);
+      
+      if (loopController.isSessionActive && loopController.isSessionActive()) {
+        loopController.endSession();
+      }
+      
+      throw error;
+    } finally {
+      this.isGenerating = false;
+    }
+  }
+
+  // スライド別画像取得
+  getSlideImage(slideImages, slideIndex) {
+    let image = slideImages.find(img => img.slideIndex === slideIndex);
+    
+    if (!image && slideImages[slideIndex]) {
+      image = slideImages[slideIndex];
     }
     
-    this.drawImagePlaceholder(x, y, width, height, '画像エラー');
-    return false;
+    if (image) {
+      console.log(`✅ スライド${slideIndex}画像取得:`, image.keyword?.substring(0, 20) + '...');
+      return image;
+    } else {
+      console.log(`📝 スライド${slideIndex}画像なし`);
+      return null;
+    }
   }
 
-  // 画像プレースホルダー
-  drawImagePlaceholder(x, y, width, height, label = '関連画像') {
-    this.ctx.save();
-    this.ctx.fillStyle = '#f8f9fa';
-    this.ctx.fillRect(x, y, width, height);
-    this.ctx.strokeStyle = '#e9ecef';
-    this.ctx.lineWidth = 3;
-    this.ctx.strokeRect(x, y, width, height);
-    this.ctx.fillStyle = '#dee2e6';
-    this.ctx.fillRect(x + width/4, y + height/3, width/2, height/3);
-    this.ctx.fillStyle = '#6c757d';
-    this.ctx.font = 'bold 28px sans-serif';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(label, x + width/2, y + height - 40);
-    this.ctx.restore();
-  }
-
-  // 番号バッジ
-  drawNumberBadge(number, x, y, size = 60) {
-    this.ctx.save();
-    this.ctx.fillStyle = '#000000';
-    this.ctx.beginPath();
-    this.ctx.arc(x, y, size, 0, Math.PI * 2);
-    this.ctx.fill();
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.font = `bold ${size}px sans-serif`;
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(number, x, y);
-    this.ctx.restore();
-  }
-
-  // タイトルスライド描画（ログ最適化版）
-  renderTitleSlide(videoDesign, slideImages = []) {
+  // タイトルスライド描画
+  renderTitleSlide(videoDesign, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -212,32 +204,22 @@ class VideoComposer {
       { bold: true }
     );
     
-    // サブタイトル
-    const itemCount = videoDesign.items?.length || 3;
-    this.drawLargeText(
-      `知って得する${itemCount}選`,
-      centerX,
-      centerY + 100,
-      45,
-      '#6c757d'
-    );
-    
     // 画像描画
-    const titleImage = slideImages.find(img => img.type === 'title');
     const imageX = this.canvas.width * 0.15;
     const imageY = centerY + 200;
     const imageWidth = this.canvas.width * 0.7;
     const imageHeight = 300;
     
-    if (titleImage?.optimized) {
-      this.drawActualImage(titleImage.optimized, imageX, imageY, imageWidth, imageHeight);
+    if (slideImage?.optimized?.canvas) {
+      console.log('✅ タイトル画像描画');
+      this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
     } else {
       this.drawImagePlaceholder(imageX, imageY, imageWidth, imageHeight, 'メイン画像');
     }
   }
 
-  // 項目スライド描画（ログ最適化版）
-  renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImages = []) {
+  // 項目スライド描画
+  renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -253,41 +235,34 @@ class VideoComposer {
     const imageWidth = this.canvas.width * 0.8;
     const imageHeight = this.canvas.height / 2;
     
-    // 画像検索・描画
-    const itemImage = slideImages.find(img => 
-      img.type === 'item' && 
-      img.itemIndex === (itemNumber - 1) && 
-      img.subSlideIndex === subSlideIndex
-    );
-    
     if (subSlideIndex === 0) {
       this.drawLargeText(itemTitle, centerX, textAreaHeight * 0.5, 60, '#000000', { bold: true });
-      if (itemImage?.optimized) {
-        this.drawActualImage(itemImage.optimized, imageX, imageY + 50, imageWidth, imageHeight - 100);
+      if (slideImage?.optimized?.canvas) {
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 50, imageWidth, imageHeight - 100);
       } else {
         this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, `${itemTitle}のイメージ`);
       }
     } else if (subSlideIndex === 1 && mainContent) {
       this.drawLargeText(itemTitle, centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true });
       this.drawLargeText(mainContent, centerX, textAreaHeight * 0.7, 40, '#000000');
-      if (itemImage?.optimized) {
-        this.drawActualImage(itemImage.optimized, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      if (slideImage?.optimized?.canvas) {
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
       } else {
         this.drawImagePlaceholder(imageX, imageY + 30, imageWidth, imageHeight - 60, `${itemTitle}の具体例`);
       }
     } else if (subSlideIndex === 2 && details) {
       this.drawLargeText('💡 ポイント', centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true });
       this.drawLargeText(details, centerX, textAreaHeight * 0.7, 38, '#000000');
-      if (itemImage?.optimized) {
-        this.drawActualImage(itemImage.optimized, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      if (slideImage?.optimized?.canvas) {
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
       } else {
         this.drawImagePlaceholder(imageX, imageY + 30, imageWidth, imageHeight - 60, `${itemTitle}のコツ`);
       }
     }
   }
 
-  // まとめスライド描画（ログ最適化版）
-  renderSummarySlide(videoDesign, slideImages = []) {
+  // まとめスライド描画
+  renderSummarySlide(videoDesign, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -302,112 +277,118 @@ class VideoComposer {
       { bold: true }
     );
     
-    const summaryImage = slideImages.find(img => img.type === 'summary');
-    const imageX = this.canvas.width * 0.1;
-    const imageY = this.canvas.height / 2;
-    const imageWidth = this.canvas.width * 0.8;
-    const imageHeight = this.canvas.height / 2;
+    // まとめ画像
+    const imageX = this.canvas.width * 0.2;
+    const imageY = this.canvas.height * 0.7;
+    const imageWidth = this.canvas.width * 0.6;
+    const imageHeight = 200;
     
-    if (summaryImage?.optimized) {
-      this.drawActualImage(summaryImage.optimized, imageX, imageY + 50, imageWidth, imageHeight - 100);
+    if (slideImage?.optimized?.canvas) {
+      this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
     } else {
-      this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, 'いいね・チャンネル登録');
+      this.drawImagePlaceholder(imageX, imageY, imageWidth, imageHeight, 'いいね＆チャンネル登録');
     }
   }
 
-  // 🆕 画像付き動画生成 - 詳細デバッグ追加
-  async generateVideoWithImages(videoDesign, slideImages, onProgress) {
-    // 🚨 この部分が重要！パラメータ受け取り確認
-    console.log('🎬 generateVideoWithImages 呼び出し確認:', {
-      videoDesignTitle: videoDesign?.title,
-      slideImagesType: typeof slideImages,
-      slideImagesIsArray: Array.isArray(slideImages),
-      slideImagesLength: slideImages ? slideImages.length : 'undefined',
-      slideImagesContent: slideImages
-    });
-
-    // 安全なデフォルト値
-    const safeSlideImages = slideImages || [];
-    
-    console.log('🖼️ safeSlideImages 処理後:', {
-      length: safeSlideImages.length,
-      types: safeSlideImages.map(img => img.type),
-      sample: safeSlideImages[0]
-    });
-    
-    if (this.isGenerating) throw new Error('既に生成中');
-    this.isGenerating = true;
-    
-    try {
-      const duration = Math.max(Math.min(videoDesign.duration || 30, 180), 15);
-      const recordingPromise = this.startRecording(duration);
-      const startTime = Date.now();
-      const targetMs = duration * 1000;
-      
-      const itemCount = videoDesign.items?.length || 3;
-      const subSlidesPerItem = 3;
-      const totalSlides = 1 + (itemCount * subSlidesPerItem) + 1;
-      const slideTime = duration / totalSlides;
-      
-      console.log('🎬 動画生成設定:', {
-        duration,
-        itemCount,
-        totalSlides,
-        slideTime,
-        safeSlideImagesCount: safeSlideImages.length
-      });
-      
-      const animate = () => {
-        if (!loopController.isSessionActive()) return;
-        
-        const elapsed = Date.now() - startTime;
-        const currentTime = elapsed / 1000;
-        const progress = Math.min(elapsed / targetMs, 1);
-        const currentSlideIndex = Math.floor(currentTime / slideTime);
-        
-        if (currentSlideIndex === 0) {
-          this.renderTitleSlide(videoDesign, safeSlideImages);
-        } else if (currentSlideIndex <= itemCount * subSlidesPerItem) {
-          const adjustedIndex = currentSlideIndex - 1;
-          const itemIndex = Math.floor(adjustedIndex / subSlidesPerItem);
-          const subSlideIndex = adjustedIndex % subSlidesPerItem;
-          const currentItem = videoDesign.items?.[itemIndex];
-          if (currentItem) {
-            this.renderItemSlide(currentItem, itemIndex + 1, subSlideIndex, safeSlideImages);
-          }
-        } else {
-          this.renderSummarySlide(videoDesign, safeSlideImages);
-        }
-        
-        if (onProgress) onProgress(Math.floor(progress * 100));
-        
-        if (progress >= 1 || currentTime >= duration) {
-          console.log('🏁 画像付き動画完成！');
-          setTimeout(() => this.stopRecording(), 200);
-          return;
-        }
-        
-        const animationId = requestAnimationFrame(animate);
-        loopController.registerAnimation(animationId);
-      };
-      
-      animate();
-      return recordingPromise;
-      
-    } catch (error) {
-      console.error('🚨 画像付き動画エラー:', error);
-      this.isGenerating = false;
-      loopController.forceStop('ERROR');
-      throw error;
-    } finally {
-      setTimeout(() => { this.isGenerating = false; }, 1000);
-    }
-  }
-
-  // 従来版動画生成
-  async generateVideoFromDesign(videoDesign, onProgress) {
-    console.log('🎬 generateVideoFromDesign (従来版) 呼び出し');
+  // 通常の動画生成（画像なし）
+  async generateVideo(videoDesign, onProgress) {
+    console.log('🎬 通常動画生成開始');
     return this.generateVideoWithImages(videoDesign, [], onProgress);
+  }
+
+  // 実際の画像描画
+  drawActualImage(canvas, x, y, width, height) {
+    try {
+      this.ctx.drawImage(canvas, x, y, width, height);
+    } catch (error) {
+      console.error('🚨 画像描画エラー:', error);
+      this.drawImagePlaceholder(x, y, width, height, 'エラー');
+    }
+  }
+
+  // プレースホルダー画像描画
+  drawImagePlaceholder(x, y, width, height, text = '画像') {
+    this.ctx.save();
+    
+    // 背景
+    this.ctx.fillStyle = '#f8f9fa';
+    this.ctx.fillRect(x, y, width, height);
+    
+    // 枠線
+    this.ctx.strokeStyle = '#dee2e6';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(x, y, width, height);
+    
+    // テキスト
+    this.ctx.fillStyle = '#6c757d';
+    this.ctx.font = 'bold 24px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(text, x + width/2, y + height/2);
+    
+    this.ctx.restore();
+  }
+
+  // 白背景描画
+  drawWhiteBackground() {
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  // 大きなテキスト描画
+  drawLargeText(text, x, y, fontSize = 32, color = '#000000', options = {}) {
+    this.ctx.save();
+    
+    const weight = options.bold ? 'bold' : 'normal';
+    this.ctx.font = `${weight} ${fontSize}px Arial`;
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    
+    const lines = text.split('\n');
+    const lineHeight = fontSize * 1.2;
+    const totalHeight = lines.length * lineHeight;
+    const startY = y - (totalHeight / 2) + (lineHeight / 2);
+    
+    lines.forEach((line, index) => {
+      this.ctx.fillText(line, x, startY + (index * lineHeight));
+    });
+    
+    this.ctx.restore();
+  }
+
+  // 番号バッジ描画
+  drawNumberBadge(number, x, y, radius) {
+    this.ctx.save();
+    
+    // 円描画
+    this.ctx.fillStyle = '#007bff';
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    this.ctx.fill();
+    
+    // 番号描画
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = 'bold 32px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(number.toString(), x, y);
+    
+    this.ctx.restore();
+  }
+
+  // Sleep関数
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // クリーンアップ
+  cleanup() {
+    if (this.recorder && this.recorder.state !== 'inactive') {
+      this.recorder.stop();
+    }
+    this.isGenerating = false;
+    console.log('🧹 VideoComposer クリーンアップ完了');
   }
 }
 
