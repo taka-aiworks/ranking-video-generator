@@ -1,4 +1,4 @@
-// src/components/Generator/SimpleVideoGenerator.jsx - シンプル汎用版
+// src/components/Generator/SimpleVideoGenerator.jsx - 画像統合対応完全版
 
 import React, { useState, useRef, useCallback } from 'react';
 import { Play, Download, Zap, Smartphone, Monitor, Video, Edit3, Save, AlertCircle, CheckCircle } from 'lucide-react';
@@ -7,6 +7,8 @@ import { Play, Download, Zap, Smartphone, Monitor, Video, Edit3, Save, AlertCirc
 import openaiService from '../../services/api/openai.js';
 import videoComposer from '../../services/video/videoComposer.js';
 import contentAnalyzer from '../../services/generators/contentAnalyzer.js';
+import mediaIntegrator from '../../services/integration/mediaIntegrator.js';
+import { useImageIntegration } from '../../hooks/useImageIntegration.js';
 
 const SimpleVideoGenerator = () => {
   // === 基本状態 ===
@@ -25,6 +27,19 @@ const SimpleVideoGenerator = () => {
   const [generatedScript, setGeneratedScript] = useState(null);
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [editableScript, setEditableScript] = useState(null);
+
+  // === 🆕 画像統合フック ===
+  const {
+    images,
+    isLoading: isImageLoading,
+    error: imageError,
+    settings: imageSettings,
+    integrateImages,
+    generateVideoWithImages,
+    updateSettings: updateImageSettings,
+    hasImages,
+    isIntegrationEnabled
+  } = useImageIntegration();
 
   // === Canvas参照 ===
   const canvasRef = useRef(null);
@@ -59,12 +74,12 @@ const SimpleVideoGenerator = () => {
   // === 編集開始 ===
   const handleStartEditing = useCallback(() => {
     if (generatedScript) {
-      setEditableScript(JSON.parse(JSON.stringify(generatedScript))); // ディープコピー
+      setEditableScript(JSON.parse(JSON.stringify(generatedScript)));
       setIsEditingScript(true);
     }
   }, [generatedScript]);
 
-  // === AI動画生成（シンプル版） ===
+  // === AI動画生成（画像統合版） ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -78,62 +93,69 @@ const SimpleVideoGenerator = () => {
     setGeneratedScript(null);
 
     try {
-      // AI による動画時間自動計算
       const optimalDuration = contentAnalyzer.calculateOptimalDuration(keyword, 'auto', format);
-      console.log(`⏰ AI計算時間 (${format}):`, optimalDuration + '秒');
+      console.log(`⏰ AI計算時間: ${optimalDuration}秒`);
 
       setStatus(`🧠 "${keyword}" の動画設計をAIが作成中...`);
-      setProgress(20);
+      setProgress(10);
 
-      // AI設計図生成（テンプレート指定なし - AIが自動判断）
-      const videoDesign = await openaiService.generateVideoDesign(
-        keyword, 
-        'auto', // テンプレートはAIが自動判断
-        format, 
-        optimalDuration
-      );
-
-      // 生成されたスクリプトを保存
+      const videoDesign = await openaiService.generateVideoDesign(keyword, 'auto', format, optimalDuration);
       setGeneratedScript(videoDesign);
       setTab('script');
-      
-      setStatus('📝 AI設計図完成！内容を確認できます');
-      setProgress(40);
-      
-      // Canvas初期化
-      videoComposer.initCanvas(canvasRef, videoDesign);
-      
-      setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
-      setProgress(50);
-      
-      // 動画生成
-      const generatedVideo = await videoComposer.generateVideoFromDesign(
-        videoDesign,
-        (videoProgress) => {
-          setProgress(50 + (videoProgress * 0.45)); // 50-95%
-        }
-      );
+      setStatus('📝 AI設計図完成！');
+      setProgress(25);
 
-      // 結果保存
+      // 🆕 画像統合（有効な場合のみ）
+      let enhancedVideoDesign = videoDesign;
+      if (isIntegrationEnabled) {
+        setStatus('🖼️ 関連画像を自動取得中...');
+        setProgress(35);
+        
+        try {
+          enhancedVideoDesign = await integrateImages(videoDesign);
+          setStatus('✅ 画像統合完了！');
+          setProgress(50);
+        } catch (imgError) {
+          console.warn('⚠️ 画像統合エラー:', imgError);
+          setStatus('⚠️ 画像取得失敗 - プレースホルダーで生成');
+        }
+      }
+      
+      videoComposer.initCanvas(canvasRef, enhancedVideoDesign);
+      setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
+      setProgress(55);
+      
+      // 🆕 画像付きまたは従来動画生成
+      let generatedVideo;
+      if (isIntegrationEnabled && hasImages) {
+        generatedVideo = await generateVideoWithImages(
+          enhancedVideoDesign,
+          (videoProgress) => setProgress(55 + (videoProgress * 0.4))
+        );
+      } else {
+        generatedVideo = await videoComposer.generateVideoFromDesign(
+          enhancedVideoDesign,
+          (videoProgress) => setProgress(55 + (videoProgress * 0.4))
+        );
+      }
+
       const result = {
-        title: videoDesign.title,
-        duration: `${videoDesign.duration}秒`,
-        format: `${videoDesign.canvas.width}x${videoDesign.canvas.height}`,
+        title: enhancedVideoDesign.title,
+        duration: `${enhancedVideoDesign.duration}秒`,
+        format: `${enhancedVideoDesign.canvas.width}x${enhancedVideoDesign.canvas.height}`,
         thumbnail: format === 'short' ? '📱' : '🎬',
-        description: videoDesign.metadata?.description || '',
-        tags: videoDesign.metadata?.tags || [],
+        description: enhancedVideoDesign.metadata?.description || '',
+        tags: enhancedVideoDesign.metadata?.tags || [],
         videoData: generatedVideo,
-        aiDesign: videoDesign
+        aiDesign: enhancedVideoDesign,
+        hasImages: isIntegrationEnabled && hasImages,
+        imageCount: images.length
       };
 
       setStatus('✅ AI動画生成完了！');
       setProgress(100);
       setVideo(result);
-
-      // 結果表示へ移行
-      setTimeout(() => {
-        setTab('result');
-      }, 1500);
+      setTimeout(() => setTab('result'), 1500);
 
     } catch (err) {
       console.error('AI動画生成エラー:', err);
@@ -141,12 +163,11 @@ const SimpleVideoGenerator = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [keyword, format]);
+  }, [keyword, format, integrateImages, generateVideoWithImages, isIntegrationEnabled, hasImages, images.length]);
 
   // === ダウンロード ===
   const downloadVideo = useCallback((videoData, filename) => {
     if (!videoData?.url) return;
-    
     const a = document.createElement('a');
     a.href = videoData.url;
     a.download = filename;
@@ -218,11 +239,14 @@ const SimpleVideoGenerator = () => {
 
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Error Display */}
-        {error && (
+        {(error || imageError) && (
           <div className="mb-6 bg-red-500/20 border border-red-500/30 rounded-lg p-4 flex items-center space-x-2">
             <AlertCircle className="w-5 h-5 text-red-400" />
-            <span className="text-red-400">{error}</span>
-            <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+            <span className="text-red-400">{error || imageError}</span>
+            <button 
+              onClick={() => setError(null)}
+              className="ml-auto text-red-400 hover:text-red-300"
+            >
               ✕
             </button>
           </div>
@@ -299,14 +323,80 @@ const SimpleVideoGenerator = () => {
               </div>
             </div>
 
+            {/* 🆕 画像設定セクション */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+              <h2 className="text-xl font-bold mb-4">🖼️ 画像設定</h2>
+              
+              {/* 画像統合ON/OFF */}
+              <div className="flex items-center justify-between mb-4 p-4 bg-white/5 rounded-lg">
+                <div>
+                  <div className="font-bold text-green-400">自動画像挿入</div>
+                  <div className="text-sm text-gray-400">関連画像を動画に自動挿入します</div>
+                </div>
+                <button
+                  onClick={() => updateImageSettings({ enabled: !isIntegrationEnabled })}
+                  className={`w-12 h-6 rounded-full transition-colors ${
+                    isIntegrationEnabled ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
+                    isIntegrationEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+
+              {/* 画像レイアウト選択 */}
+              {isIntegrationEnabled && (
+                <div className="space-y-3">
+                  <div className="text-sm font-bold text-gray-300">画像配置</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { value: 'bottom-half', label: '下半分', desc: '推奨' },
+                      { value: 'top-half', label: '上半分', desc: '' }
+                    ].map(layout => (
+                      <button
+                        key={layout.value}
+                        onClick={() => updateImageSettings({ layout: layout.value })}
+                        className={`p-3 rounded-lg border text-left transition-colors ${
+                          imageSettings.layout === layout.value
+                            ? 'border-green-400 bg-green-500/20 text-green-400'
+                            : 'border-white/20 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="font-bold">{layout.label}</div>
+                        {layout.desc && (
+                          <div className="text-xs text-gray-400">{layout.desc}</div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 画像統合状況 */}
+              {isIntegrationEnabled && (
+                <div className="mt-4 p-3 bg-blue-500/20 rounded-lg">
+                  <div className="text-sm text-blue-400 font-bold mb-1">
+                    {isImageLoading ? '🔄 画像処理中...' : '📊 画像統合状況'}
+                  </div>
+                  <div className="text-xs text-gray-300">
+                    {hasImages ? `${images.length}件の画像が準備済み` : '画像未取得'}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* 生成ボタン */}
             <button
               onClick={handleGenerate}
-              disabled={!keyword || isGenerating}
+              disabled={!keyword || isGenerating || isImageLoading}
               className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 disabled:opacity-50 text-black font-bold py-6 rounded-xl text-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:scale-100"
             >
               <Zap className="w-6 h-6" />
-              <span>🤖 AIに動画を作ってもらう</span>
+              <span>
+                {isImageLoading ? '🖼️ 画像準備中...' : '🤖 AIに動画を作ってもらう'}
+                {isIntegrationEnabled ? ' (画像付き)' : ''}
+              </span>
             </button>
           </div>
         )}
@@ -371,6 +461,29 @@ const SimpleVideoGenerator = () => {
             <div className="text-lg font-bold text-yellow-400 mb-4">
               {Math.floor(progress)}% 完了
             </div>
+            
+            {/* 🆕 画像処理状況表示 */}
+            {isIntegrationEnabled && (
+              <div className="mt-6 p-4 bg-white/5 rounded-lg">
+                <div className="text-sm text-gray-300 mb-2">📊 画像統合状況</div>
+                <div className="flex justify-center space-x-6 text-xs">
+                  <div className="text-center">
+                    <div className="text-green-400 font-bold">{images.length}</div>
+                    <div className="text-gray-400">取得済み</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-blue-400 font-bold">{imageSettings.layout}</div>
+                    <div className="text-gray-400">レイアウト</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-purple-400 font-bold">
+                      {isImageLoading ? '処理中' : '準備完了'}
+                    </div>
+                    <div className="text-gray-400">状態</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -379,14 +492,23 @@ const SimpleVideoGenerator = () => {
           <div className="space-y-6">
             <div className="text-center mb-6">
               <h2 className="text-3xl font-bold text-yellow-400 mb-2">🎉 動画完成！</h2>
-              <p className="text-gray-400">AIが作成した動画をご確認ください</p>
+              <p className="text-gray-400">
+                AIが作成した{video.hasImages ? '画像付き' : ''}動画をご確認ください
+              </p>
             </div>
 
             <div className="bg-white/10 rounded-xl p-6 text-center">
               <div className="text-4xl mb-4">{video.thumbnail}</div>
               <div className="font-bold text-xl mb-2">{video.title}</div>
               <div className="text-gray-400 mb-2">{video.duration} | {video.videoData.size}</div>
-              <div className="text-sm text-yellow-400 mb-6">{video.format}</div>
+              <div className="text-sm text-yellow-400 mb-2">{video.format}</div>
+              
+              {/* 🆕 画像統合情報表示 */}
+              {video.hasImages && (
+                <div className="text-xs text-green-400 mb-4">
+                  ✅ {video.imageCount}件の画像を統合済み
+                </div>
+              )}
               
               <div className="flex justify-center space-x-4 mb-6">
                 <button 
@@ -421,7 +543,7 @@ const SimpleVideoGenerator = () => {
   );
 };
 
-// 汎用スクリプト表示コンポーネント（AI生成内容完全対応版）
+// 汎用スクリプト表示コンポーネント（簡潔版）
 const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
   if (!script) return null;
 
@@ -440,8 +562,6 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
     current[keys[keys.length - 1]] = value;
     onUpdate(updated);
   };
-
-  console.log('🎬 スクリプト表示データ:', script); // デバッグ用
 
   return (
     <div className="space-y-6">
