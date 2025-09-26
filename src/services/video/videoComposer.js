@@ -1,4 +1,4 @@
-// src/services/video/videoComposer.js - シンプル&モダン版
+// src/services/video/videoComposer.js - 現代スライド形式（白背景+画像付き）
 
 import { API_CONFIG } from '../../config/api.js';
 import loopController from './loopController.js';
@@ -12,7 +12,7 @@ class VideoComposer {
   }
 
   initCanvas(canvasRef, videoDesign) {
-    console.log('🎬 シンプルモダン動画Canvas初期化:', videoDesign?.title);
+    console.log('🎬 現代スライド動画Canvas初期化:', videoDesign?.title);
     
     this.canvas = canvasRef.current;
     if (!this.canvas) throw new Error('Canvas not found');
@@ -23,7 +23,7 @@ class VideoComposer {
     this.canvas.width = width;
     this.canvas.height = height;
     
-    console.log(`✅ シンプルCanvas: ${width}x${height}`);
+    console.log(`✅ スライド動画Canvas: ${width}x${height}`);
     return this.canvas;
   }
 
@@ -61,23 +61,42 @@ class VideoComposer {
     loopController.endSession();
   }
 
-  // シンプルな白背景
-  drawBackground() {
+  // 白背景
+  drawWhiteBackground() {
     this.ctx.fillStyle = '#ffffff';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  // クリーンなテキスト描画
-  drawCleanText(text, x, y, size, color = '#000000', options = {}) {
-    const { bold = true, maxWidth = this.canvas.width * 0.8 } = options;
+  // スマホで読みやすい大きな文字
+  drawLargeText(text, x, y, size, color = '#333333', options = {}) {
+    const { 
+      maxWidth = this.canvas.width * 0.9, 
+      bold = true, 
+      align = 'center',
+      lineHeight = 1.3
+    } = options;
     
     this.ctx.save();
-    this.ctx.font = `${bold ? 'bold' : 'normal'} ${size}px "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif`;
-    this.ctx.textAlign = 'center';
+    this.ctx.font = `${bold ? 'bold' : 'normal'} ${size}px "Hiragino Kaku Gothic ProN", "Hiragino Sans", Arial, sans-serif`;
+    this.ctx.textAlign = align;
     this.ctx.textBaseline = 'middle';
     this.ctx.fillStyle = color;
     
-    // 改行処理
+    // 改行処理（日本語対応）
+    const lines = this.wrapText(text, maxWidth);
+    const totalHeight = lines.length * size * lineHeight;
+    const startY = y - (totalHeight / 2) + (size * lineHeight / 2);
+    
+    lines.forEach((line, index) => {
+      const lineY = startY + (index * size * lineHeight);
+      this.ctx.fillText(line, x, lineY);
+    });
+    
+    this.ctx.restore();
+  }
+
+  // テキスト改行処理
+  wrapText(text, maxWidth) {
     const words = text.split('');
     const lines = [];
     let currentLine = '';
@@ -95,147 +114,232 @@ class VideoComposer {
     }
     if (currentLine) lines.push(currentLine);
     
-    const lineHeight = size * 1.2;
-    const startY = y - ((lines.length - 1) * lineHeight) / 2;
-    
-    lines.forEach((line, index) => {
-      const lineY = startY + (index * lineHeight);
-      this.ctx.fillText(line, x, lineY);
-    });
-    
-    this.ctx.restore();
+    return lines;
   }
 
-  // プレースホルダー画像（グレーボックス）
-  drawImagePlaceholder(x, y, width, height, label = '画像') {
+  // 画像プレースホルダー（将来的にUnsplash画像に置換）
+  drawImagePlaceholder(x, y, width, height, label = '関連画像') {
     this.ctx.save();
     
-    // 背景
-    this.ctx.fillStyle = '#f0f0f0';
+    // 背景（薄いグレー）
+    this.ctx.fillStyle = '#f8f9fa';
     this.ctx.fillRect(x, y, width, height);
     
     // 枠線
-    this.ctx.strokeStyle = '#e0e0e0';
-    this.ctx.lineWidth = 2;
+    this.ctx.strokeStyle = '#e9ecef';
+    this.ctx.lineWidth = 3;
     this.ctx.strokeRect(x, y, width, height);
     
+    // 画像アイコン（簡易）
+    this.ctx.fillStyle = '#dee2e6';
+    this.ctx.fillRect(x + width/4, y + height/3, width/2, height/3);
+    
     // ラベル
-    this.ctx.fillStyle = '#999999';
-    this.ctx.font = '24px sans-serif';
+    this.ctx.fillStyle = '#6c757d';
+    this.ctx.font = 'bold 28px sans-serif';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(label, x + width/2, y + height/2);
+    this.ctx.fillText(label, x + width/2, y + height - 40);
     
     this.ctx.restore();
   }
 
-  // シンプルな構成：上部テキスト + 下部画像（プログレスバー削除）
-  renderSimpleLayout(videoDesign, currentTime) {
-    const centerX = this.canvas.width / 2;
+  // 番号バッジ（①②③）- 黒背景に変更
+  drawNumberBadge(number, x, y, size = 60) {
+    this.ctx.save();
     
-    // 動画進行に応じてコンテンツ切り替え
-    const totalDuration = videoDesign.duration;
-    const itemCount = videoDesign.items?.length || 3;
-    const itemDuration = totalDuration / (itemCount + 1); // +1はタイトル用
+    // 円背景（黒色に変更）
+    this.ctx.fillStyle = '#000000';
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, size, 0, Math.PI * 2);
+    this.ctx.fill();
     
-    if (currentTime < itemDuration) {
-      // タイトル画面
-      this.renderTitleScreen(videoDesign, centerX);
-    } else {
-      // 各項目画面
-      const itemIndex = Math.floor((currentTime - itemDuration) / itemDuration);
-      const currentItem = videoDesign.items?.[itemIndex];
-      
-      if (currentItem) {
-        this.renderItemScreen(currentItem, itemIndex + 1, centerX);
-      }
-    }
+    // 白い番号
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `bold ${size}px sans-serif`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(number, x, y);
     
-    // プログレスバー削除（不要）
+    this.ctx.restore();
   }
 
-  // タイトル画面
-  renderTitleScreen(videoDesign, centerX) {
-    // メインタイトル（上部、黒文字）
-    this.drawCleanText(
+  // タイトルスライド
+  renderTitleSlide(videoDesign) {
+    this.drawWhiteBackground();
+    
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    
+    // メインタイトル（大きく）
+    this.drawLargeText(
       videoDesign.title || 'タイトル',
       centerX,
-      this.canvas.height * 0.2,
-      50,
-      '#000000'
+      centerY - 200,
+      70,
+      '#212529',
+      { bold: true }
     );
     
-    // 画像エリア（下部）
+    // サブタイトル（知って得する○選など）
+    const itemCount = videoDesign.items?.length || 3;
+    this.drawLargeText(
+      `知って得する${itemCount}選`,
+      centerX,
+      centerY + 100,
+      45,
+      '#6c757d'
+    );
+    
+    // 装飾的な画像エリア
     this.drawImagePlaceholder(
-      this.canvas.width * 0.1,
-      this.canvas.height * 0.4,
-      this.canvas.width * 0.8,
-      this.canvas.height * 0.4,
+      this.canvas.width * 0.15,
+      centerY + 200,
+      this.canvas.width * 0.7,
+      300,
       'メイン画像'
     );
   }
 
-  // 項目画面
-  renderItemScreen(item, itemNumber, centerX) {
-    // 番号（小さく、上部左）
-    this.drawCleanText(
-      `${itemNumber}`,
-      80,
-      150,
-      40,
-      '#666666'
+  // 項目スライド（①②③）- 1つの情報のみ表示
+  renderItemSlide(item, itemNumber, subSlideIndex = 0) {
+    this.drawWhiteBackground();
+    
+    const centerX = this.canvas.width / 2;
+    
+    // 番号バッジ（上部左）
+    this.drawNumberBadge(
+      itemNumber,
+      100,
+      120,
+      50
     );
     
-    // 項目タイトル（上部中央、黒文字）
+    // 項目のサブスライドを分割表示
     const itemTitle = item.name || item.title || `項目${itemNumber}`;
-    this.drawCleanText(
-      itemTitle,
-      centerX,
-      this.canvas.height * 0.15,
-      45,
-      '#000000'
-    );
+    const mainContent = item.content?.main || item.description || '';
+    const details = item.content?.details || '';
     
-    // 説明文（上部、黒文字）
-    const description = item.content?.main || item.description;
-    if (description) {
-      this.drawCleanText(
-        description,
+    // 上半分：文字エリア（0 〜 height/2）
+    const textAreaHeight = this.canvas.height / 2;
+    
+    // 下半分：画像エリア（height/2 〜 height）
+    const imageY = this.canvas.height / 2;
+    const imageHeight = this.canvas.height / 2;
+    
+    // サブスライドによって表示内容を変更
+    if (subSlideIndex === 0) {
+      // サブスライド1: タイトルのみ
+      this.drawLargeText(
+        itemTitle,
         centerX,
-        this.canvas.height * 0.25,
-        32,
-        '#333333'
+        textAreaHeight * 0.5,
+        60,
+        '#000000',  // 黒文字に統一
+        { bold: true }
       );
-    }
-    
-    // 詳細（上部、グレー文字）
-    const details = item.content?.details;
-    if (details) {
-      this.drawCleanText(
+      
+      // 下半分に関連画像
+      this.drawImagePlaceholder(
+        this.canvas.width * 0.1,
+        imageY + 50,
+        this.canvas.width * 0.8,
+        imageHeight - 100,
+        `${itemTitle}のイメージ`
+      );
+      
+    } else if (subSlideIndex === 1 && mainContent) {
+      // サブスライド2: メイン説明
+      this.drawLargeText(
+        itemTitle,
+        centerX,
+        textAreaHeight * 0.25,
+        45,
+        '#000000',  // 黒文字に統一
+        { bold: true }
+      );
+      
+      this.drawLargeText(
+        mainContent,
+        centerX,
+        textAreaHeight * 0.7,
+        40,
+        '#000000'   // 黒文字に統一
+      );
+      
+      // 下半分に関連画像
+      this.drawImagePlaceholder(
+        this.canvas.width * 0.1,
+        imageY + 30,
+        this.canvas.width * 0.8,
+        imageHeight - 60,
+        `${itemTitle}の具体例`
+      );
+      
+    } else if (subSlideIndex === 2 && details) {
+      // サブスライド3: 詳細・効果
+      this.drawLargeText(
+        '💡 ポイント',
+        centerX,
+        textAreaHeight * 0.25,
+        45,
+        '#000000',  // 黒文字に統一
+        { bold: true }
+      );
+      
+      this.drawLargeText(
         details,
         centerX,
-        this.canvas.height * 0.32,
-        24,
-        '#666666'
+        textAreaHeight * 0.7,
+        38,
+        '#000000'   // 黒文字に統一
+      );
+      
+      // 下半分に関連画像
+      this.drawImagePlaceholder(
+        this.canvas.width * 0.1,
+        imageY + 30,
+        this.canvas.width * 0.8,
+        imageHeight - 60,
+        `${itemTitle}のコツ`
       );
     }
+  }
+
+  // まとめスライド
+  renderSummarySlide(videoDesign) {
+    this.drawWhiteBackground();
     
-    // 関連画像（下部）
+    const centerX = this.canvas.width / 2;
+    
+    // 上半分：グッドボタン・チャンネル登録（統一フォーマット）
+    const textAreaHeight = this.canvas.height / 2;
+    
+    this.drawLargeText(
+      'この動画が役に立ったら\nグッドボタン👍\nチャンネル登録🔔\nお願いします！',
+      centerX,
+      textAreaHeight * 0.6,
+      35,
+      '#000000',  // 黒文字に統一
+      { bold: true }
+    );
+    
+    // 下半分：YouTube画像（統一フォーマット）
+    const imageY = this.canvas.height / 2;
+    const imageHeight = this.canvas.height / 2;
+    
     this.drawImagePlaceholder(
       this.canvas.width * 0.1,
-      this.canvas.height * 0.45,
+      imageY + 50,
       this.canvas.width * 0.8,
-      this.canvas.height * 0.4,
-      `${itemTitle}の画像`
+      imageHeight - 100,
+      'YouTube画面イメージ'
     );
   }
 
-  // シンプルなプログレスバー（削除済み - 不要）
-  // drawSimpleProgress関数は削除
-
-  // メイン生成関数（シンプル版）
+  // メインの動画生成（スライド形式）
   async generateVideoFromDesign(videoDesign, onProgress) {
-    console.log('🚀 シンプルモダン動画生成開始:', {
+    console.log('🚀 現代スライド動画生成開始:', {
       title: videoDesign.title,
       duration: videoDesign.duration,
       items: videoDesign.items?.length || 0
@@ -246,11 +350,19 @@ class VideoComposer {
     
     try {
       const duration = Math.max(Math.min(videoDesign.duration || 30, 180), 15);
-      console.log(`📱 シンプル動画時間: ${duration}秒`);
+      console.log(`📱 スライド動画時間: ${duration}秒`);
       
       const recordingPromise = this.startRecording(duration);
       const startTime = Date.now();
       const targetMs = duration * 1000;
+      
+      // スライド構成計算（情報分割版）
+      const itemCount = videoDesign.items?.length || 3;
+      const subSlidesPerItem = 3; // 各項目を3つのサブスライドに分割
+      const totalSlides = 1 + (itemCount * subSlidesPerItem) + 1; // タイトル + 分割項目 + まとめ
+      const slideTime = duration / totalSlides; // 各スライドの時間（短く）
+      
+      console.log(`📊 分割スライド構成: ${totalSlides}スライド, 各${slideTime.toFixed(1)}秒`);
       
       const animate = () => {
         if (!loopController.isSessionActive()) return;
@@ -259,18 +371,33 @@ class VideoComposer {
         const currentTime = elapsed / 1000;
         const progress = Math.min(elapsed / targetMs, 1);
         
-        // 白背景
-        this.drawBackground();
+        // 現在のスライドを判定（分割版）
+        const currentSlideIndex = Math.floor(currentTime / slideTime);
         
-        // シンプルな構成
-        this.renderSimpleLayout(videoDesign, currentTime);
+        if (currentSlideIndex === 0) {
+          // タイトルスライド
+          this.renderTitleSlide(videoDesign);
+        } else if (currentSlideIndex <= itemCount * subSlidesPerItem) {
+          // 項目スライド（分割版）
+          const adjustedIndex = currentSlideIndex - 1;
+          const itemIndex = Math.floor(adjustedIndex / subSlidesPerItem);
+          const subSlideIndex = adjustedIndex % subSlidesPerItem;
+          
+          const currentItem = videoDesign.items?.[itemIndex];
+          if (currentItem) {
+            this.renderItemSlide(currentItem, itemIndex + 1, subSlideIndex);
+          }
+        } else {
+          // まとめスライド
+          this.renderSummarySlide(videoDesign);
+        }
         
         // プログレス通知
         if (onProgress) onProgress(Math.floor(progress * 100));
         
         // 終了判定
         if (progress >= 1 || currentTime >= duration) {
-          console.log('🏁 シンプルモダン動画完成！');
+          console.log('🏁 スライド動画完成！');
           setTimeout(() => this.stopRecording(), 200);
           return;
         }
@@ -283,7 +410,7 @@ class VideoComposer {
       return recordingPromise;
       
     } catch (error) {
-      console.error('🚨 シンプル動画生成エラー:', error);
+      console.error('🚨 スライド動画生成エラー:', error);
       this.isGenerating = false;
       loopController.forceStop('ERROR');
       throw error;
