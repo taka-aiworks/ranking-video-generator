@@ -1,4 +1,4 @@
-// src/components/Generator/SimpleVideoGenerator.jsx - 画像統合対応完全版
+// src/components/Generator/SimpleVideoGenerator.jsx - 完全修正版
 
 import React, { useState, useRef, useCallback } from 'react';
 import { Play, Download, Zap, Smartphone, Monitor, Video, Edit3, Save, AlertCircle, CheckCircle } from 'lucide-react';
@@ -35,7 +35,6 @@ const SimpleVideoGenerator = () => {
     error: imageError,
     settings: imageSettings,
     integrateImages,
-    generateVideoWithImages,
     updateSettings: updateImageSettings,
     hasImages,
     isIntegrationEnabled
@@ -79,7 +78,7 @@ const SimpleVideoGenerator = () => {
     }
   }, [generatedScript]);
 
-  // === AI動画生成（画像統合版） ===
+  // === 🚨 修正版：AI動画生成（画像統合版） ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -107,12 +106,25 @@ const SimpleVideoGenerator = () => {
 
       // 🆕 画像統合（有効な場合のみ）
       let enhancedVideoDesign = videoDesign;
+      let slideImagesArray = [];
+
       if (isIntegrationEnabled) {
         setStatus('🖼️ 関連画像を自動取得中...');
         setProgress(35);
         
         try {
           enhancedVideoDesign = await integrateImages(videoDesign);
+          
+          // 🚨 重要：slideImages配列の確実な生成
+          if (enhancedVideoDesign.slideImages) {
+            slideImagesArray = Object.values(enhancedVideoDesign.slideImages);
+            console.log('✅ slideImagesArray生成完了:', {
+              count: slideImagesArray.length,
+              types: slideImagesArray.map(img => img.type),
+              sample: slideImagesArray[0]
+            });
+          }
+          
           setStatus('✅ 画像統合完了！');
           setProgress(50);
         } catch (imgError) {
@@ -125,19 +137,17 @@ const SimpleVideoGenerator = () => {
       setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
       setProgress(55);
       
-      // 🆕 画像付きまたは従来動画生成
-      let generatedVideo;
-      if (isIntegrationEnabled && hasImages) {
-        generatedVideo = await generateVideoWithImages(
-          enhancedVideoDesign,
-          (videoProgress) => setProgress(55 + (videoProgress * 0.4))
-        );
-      } else {
-        generatedVideo = await videoComposer.generateVideoFromDesign(
-          enhancedVideoDesign,
-          (videoProgress) => setProgress(55 + (videoProgress * 0.4))
-        );
-      }
+      // 🚨 修正：統一された動画生成処理
+      console.log('🎬 動画生成開始:', {
+        hasImages: slideImagesArray.length > 0,
+        slideImagesCount: slideImagesArray.length
+      });
+
+      const generatedVideo = await videoComposer.generateVideoWithImages(
+        enhancedVideoDesign,
+        slideImagesArray, // 🚨 常にslideImagesArrayを渡す（空配列でも可）
+        (videoProgress) => setProgress(55 + (videoProgress * 0.4))
+      );
 
       const result = {
         title: enhancedVideoDesign.title,
@@ -148,8 +158,8 @@ const SimpleVideoGenerator = () => {
         tags: enhancedVideoDesign.metadata?.tags || [],
         videoData: generatedVideo,
         aiDesign: enhancedVideoDesign,
-        hasImages: isIntegrationEnabled && hasImages,
-        imageCount: images.length
+        hasImages: slideImagesArray.length > 0,
+        imageCount: slideImagesArray.length
       };
 
       setStatus('✅ AI動画生成完了！');
@@ -163,7 +173,7 @@ const SimpleVideoGenerator = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [keyword, format, integrateImages, generateVideoWithImages, isIntegrationEnabled, hasImages, images.length]);
+  }, [keyword, format, integrateImages, isIntegrationEnabled]); // 🚨 依存関係を修正
 
   // === ダウンロード ===
   const downloadVideo = useCallback((videoData, filename) => {

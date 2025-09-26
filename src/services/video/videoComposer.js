@@ -1,4 +1,4 @@
-// src/services/video/videoComposer.js - シンプル修正版
+// src/services/video/videoComposer.js - デバッグログ強化版
 
 import { API_CONFIG } from '../../config/api.js';
 import loopController from './loopController.js';
@@ -116,18 +116,28 @@ class VideoComposer {
     return lines;
   }
 
-  // 画像描画
+  // 🆕 画像描画デバッグ強化
   drawActualImage(optimizedImage, x, y, width, height) {
+      ('🖼️ drawActualImage呼び出し:', {
+      hasOptimizedImage: !!optimizedImage,
+      hasCanvas: !!(optimizedImage?.canvas),
+      isPlaceholder: optimizedImage?.isPlaceholder,
+      x, y, width, height
+    });
+
     if (!optimizedImage) {
+      console.log('⚠️ optimizedImage が null/undefined');
       this.drawImagePlaceholder(x, y, width, height, '画像なし');
       return false;
     }
 
     try {
       if (optimizedImage.canvas) {
+        //console.log('✅ Canvas描画実行:', optimizedImage.canvas.width + 'x' + optimizedImage.canvas.height);
         this.ctx.drawImage(optimizedImage.canvas, x, y, width, height);
         return true;
       } else if (optimizedImage.isPlaceholder) {
+        console.log('📝 プレースホルダー描画:', optimizedImage.keyword);
         this.ctx.save();
         this.ctx.fillStyle = optimizedImage.backgroundColor || '#f8f9fa';
         this.ctx.fillRect(x, y, width, height);
@@ -141,9 +151,11 @@ class VideoComposer {
         this.ctx.fillText(optimizedImage.keyword || '関連画像', x + width/2, y + height/2);
         this.ctx.restore();
         return true;
+      } else {
+        console.log('⚠️ optimizedImage形式不正:', Object.keys(optimizedImage));
       }
     } catch (error) {
-      console.error('画像描画エラー:', error);
+      console.error('🚨 画像描画エラー:', error);
     }
     
     this.drawImagePlaceholder(x, y, width, height, '画像エラー');
@@ -183,7 +195,7 @@ class VideoComposer {
     this.ctx.restore();
   }
 
-  // タイトルスライド
+  // タイトルスライド描画（ログ最適化版）
   renderTitleSlide(videoDesign, slideImages = []) {
     this.drawWhiteBackground();
     
@@ -210,13 +222,13 @@ class VideoComposer {
       '#6c757d'
     );
     
-    // 画像
+    // 画像描画
+    const titleImage = slideImages.find(img => img.type === 'title');
     const imageX = this.canvas.width * 0.15;
     const imageY = centerY + 200;
     const imageWidth = this.canvas.width * 0.7;
     const imageHeight = 300;
     
-    const titleImage = slideImages.find(img => img.type === 'title');
     if (titleImage?.optimized) {
       this.drawActualImage(titleImage.optimized, imageX, imageY, imageWidth, imageHeight);
     } else {
@@ -224,7 +236,7 @@ class VideoComposer {
     }
   }
 
-  // 項目スライド
+  // 項目スライド描画（ログ最適化版）
   renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImages = []) {
     this.drawWhiteBackground();
     
@@ -241,6 +253,7 @@ class VideoComposer {
     const imageWidth = this.canvas.width * 0.8;
     const imageHeight = this.canvas.height / 2;
     
+    // 画像検索・描画
     const itemImage = slideImages.find(img => 
       img.type === 'item' && 
       img.itemIndex === (itemNumber - 1) && 
@@ -273,7 +286,7 @@ class VideoComposer {
     }
   }
 
-  // まとめスライド
+  // まとめスライド描画（ログ最適化版）
   renderSummarySlide(videoDesign, slideImages = []) {
     this.drawWhiteBackground();
     
@@ -298,17 +311,28 @@ class VideoComposer {
     if (summaryImage?.optimized) {
       this.drawActualImage(summaryImage.optimized, imageX, imageY + 50, imageWidth, imageHeight - 100);
     } else {
-      this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, 'YouTube画面イメージ');
+      this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, 'いいね・チャンネル登録');
     }
   }
 
-  // 画像付き動画生成
+  // 🆕 画像付き動画生成 - 詳細デバッグ追加
   async generateVideoWithImages(videoDesign, slideImages, onProgress) {
+    // 🚨 この部分が重要！パラメータ受け取り確認
+    console.log('🎬 generateVideoWithImages 呼び出し確認:', {
+      videoDesignTitle: videoDesign?.title,
+      slideImagesType: typeof slideImages,
+      slideImagesIsArray: Array.isArray(slideImages),
+      slideImagesLength: slideImages ? slideImages.length : 'undefined',
+      slideImagesContent: slideImages
+    });
+
     // 安全なデフォルト値
     const safeSlideImages = slideImages || [];
     
-    console.log('🎬 画像付き動画生成開始', {
-      slideImagesCount: safeSlideImages.length
+    console.log('🖼️ safeSlideImages 処理後:', {
+      length: safeSlideImages.length,
+      types: safeSlideImages.map(img => img.type),
+      sample: safeSlideImages[0]
     });
     
     if (this.isGenerating) throw new Error('既に生成中');
@@ -324,6 +348,14 @@ class VideoComposer {
       const subSlidesPerItem = 3;
       const totalSlides = 1 + (itemCount * subSlidesPerItem) + 1;
       const slideTime = duration / totalSlides;
+      
+      console.log('🎬 動画生成設定:', {
+        duration,
+        itemCount,
+        totalSlides,
+        slideTime,
+        safeSlideImagesCount: safeSlideImages.length
+      });
       
       const animate = () => {
         if (!loopController.isSessionActive()) return;
@@ -374,6 +406,7 @@ class VideoComposer {
 
   // 従来版動画生成
   async generateVideoFromDesign(videoDesign, onProgress) {
+    console.log('🎬 generateVideoFromDesign (従来版) 呼び出し');
     return this.generateVideoWithImages(videoDesign, [], onProgress);
   }
 }
