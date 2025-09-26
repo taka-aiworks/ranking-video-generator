@@ -170,21 +170,36 @@ class VideoComposer {
     }
   }
 
-  // スライド別画像取得
+  // src/services/video/videoComposer.js - getSlideImage修正版
+
+  // 🎯 修正箇所: getSlideImage メソッド（行100付近）
   getSlideImage(slideImages, slideIndex) {
-    let image = slideImages.find(img => img.slideIndex === slideIndex);
+    console.log(`🔍 スライド${slideIndex}の画像を検索...`);
+    console.log('📦 利用可能な画像配列:', slideImages.length, '件');
     
-    if (!image && slideImages[slideIndex]) {
-      image = slideImages[slideIndex];
-    }
-    
-    if (image) {
+    // 🔧 修正1: 単純にインデックスで取得
+    if (slideImages && slideImages[slideIndex]) {
+      const image = slideImages[slideIndex];
       console.log(`✅ スライド${slideIndex}画像取得:`, image.keyword?.substring(0, 20) + '...');
       return image;
-    } else {
-      console.log(`📝 スライド${slideIndex}画像なし`);
-      return null;
     }
+    
+    // 🔧 修正2: slideIndexプロパティで検索（フォールバック）
+    const foundImage = slideImages.find(img => img.slideIndex === slideIndex);
+    if (foundImage) {
+      console.log(`✅ スライド${slideIndex}画像取得(プロパティ検索):`, foundImage.keyword?.substring(0, 20) + '...');
+      return foundImage;
+    }
+    
+    // 🔧 修正3: 配列が短い場合は最初の画像を使用
+    if (slideImages && slideImages.length > 0) {
+      const fallbackImage = slideImages[0];
+      console.log(`⚠️ スライド${slideIndex}画像なし - フォールバック使用:`, fallbackImage.keyword?.substring(0, 20) + '...');
+      return fallbackImage;
+    }
+    
+    console.log(`❌ スライド${slideIndex}画像なし - プレースホルダー使用`);
+    return null;
   }
 
   // タイトルスライド描画

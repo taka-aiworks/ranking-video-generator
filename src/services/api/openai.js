@@ -474,5 +474,6 @@ ${jsonTemplate}
   }
 }
 
+
 const openaiService = new OpenAIService();
 export default openaiService;

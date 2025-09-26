@@ -277,48 +277,60 @@ class MediaIntegrator {
     return results;
   }
 
-  // videoDesign に画像情報を統合（改良版）
-  enhanceVideoDesignWithImages(videoDesign, optimizedImages, layout) {
+  // src/services/integration/mediaIntegrator.js - スライドインデックス修正版
+
+    // 🎯 修正箇所1: enhanceVideoDesignWithImages メソッド（行200付近）
+    enhanceVideoDesignWithImages(videoDesign, optimizedImages, layout) {
     const enhanced = JSON.parse(JSON.stringify(videoDesign)); // ディープコピー
 
     // 画像情報をメタデータに追加
     enhanced.media = {
-      images: {
+        images: {
         layout: layout,
         total: optimizedImages.length,
         optimized: optimizedImages.filter(img => img.optimized?.optimized).length,
         placeholders: optimizedImages.filter(img => img.optimized?.isPlaceholder).length,
-        unique: new Set(optimizedImages.filter(img => img.url).map(img => img.url)).size // 🆕 ユニーク画像数
-      },
-      settings: {
+        unique: new Set(optimizedImages.filter(img => img.url).map(img => img.url)).size
+        },
+        settings: {
         imageLayout: layout,
         imageQuality: 'high',
         processingTime: Date.now(),
-        diversification: true // 🆕 多様化フラグ
-      }
+        diversification: true
+        }
     };
 
-    // スライド別画像マッピング
-    enhanced.slideImages = {};
+    // 🔧 修正：slideImages配列に確実にslideIndexを設定
+    enhanced.slideImages = [];
     
-    optimizedImages.forEach(image => {
-      const key = `slide_${image.slideIndex}`;
-      enhanced.slideImages[key] = {
+    optimizedImages.forEach((image, index) => {
+        // slideIndexが設定されていない場合はindexを使用
+        const slideIndex = image.slideIndex !== undefined ? image.slideIndex : index;
+        
+        enhanced.slideImages[slideIndex] = {
+        slideIndex: slideIndex, // 🆕 slideIndexを明示的に設定
         type: image.type,
         keyword: image.keyword,
         optimized: image.optimized,
         itemIndex: image.itemIndex,
         subSlideIndex: image.subSlideIndex,
         ready: image.ready,
-        uniqueId: image.uniqueId, // 🆕 ユニークID追加
-        isUnique: true // 🆕 多様化フラグ
-      };
+        uniqueId: image.uniqueId,
+        isUnique: true,
+        url: image.url, // 🆕 デバッグ用URL追加
+        imageElement: image.imageElement // 🆕 imageElement追加
+        };
+        
+        console.log(`📌 スライド${slideIndex}画像設定:`, image.keyword?.substring(0, 20));
     });
 
-    this.log(`🎨 スライド別画像統合完了: ${Object.keys(enhanced.slideImages).length}スライド`);
+    console.log(`🎨 slideImages配列生成完了: ${enhanced.slideImages.length}スライド`);
+    console.log('📋 各スライドの画像:', enhanced.slideImages.map((img, i) => 
+        `[${i}] ${img?.keyword?.substring(0, 15) || 'なし'}`
+    ));
     
     return enhanced;
-  }
+    }
 
   // 画像付き動画生成（videoComposer 拡張）
   async generateVideoWithImages(videoDesign, onProgress) {
