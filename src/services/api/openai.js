@@ -1,4 +1,4 @@
-// src/services/api/openai.js - 実用的コンテンツ版
+// src/services/api/openai.js - createCompletionメソッド追加版
 
 import { API_CONFIG, ENV, ENDPOINTS } from '../../config/api.js';
 
@@ -7,6 +7,40 @@ class OpenAIService {
     this.apiKey = ENV.openaiApiKey;
     this.baseURL = API_CONFIG.openai.baseURL;
     this.model = API_CONFIG.openai.model;
+  }
+
+  // 🆕 キーワード生成用のcreateCompletionメソッド追加
+  async createCompletion(options) {
+    if (!this.apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    try {
+      const response = await fetch(`${this.baseURL}${ENDPOINTS.chatgpt.completion}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: options.model || this.model,
+          messages: options.messages,
+          max_tokens: options.max_tokens || 300,
+          temperature: options.temperature || 0.3
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+
+    } catch (error) {
+      console.error('🚨 OpenAI API呼び出しエラー:', error);
+      throw error;
+    }
   }
 
   getCurrentYear() {
@@ -167,7 +201,7 @@ class OpenAIService {
     },
     {
       "id": 2,
-      "name": "具体的なポイント2",
+      "name": "具体的なポイント2", 
       "content": {
         "main": "わかりやすい説明",
         "details": "詳細な解説と具体例"
@@ -177,7 +211,7 @@ class OpenAIService {
       "id": 3,
       "name": "具体的なポイント3",
       "content": {
-        "main": "わかりやすい説明",
+        "main": "わかりやすい説明", 
         "details": "詳細な解説と具体例"
       }
     }
@@ -264,166 +298,6 @@ ${jsonTemplate}
   getRealisticMockData(keyword, category, format, duration) {
     const spec = format === 'short' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
     
-    // 投資・お金系の実用的情報
-    if (category === 'money' && (keyword.includes('投資') || keyword.includes('初心者'))) {
-      return {
-        title: "投資初心者が知っておくべき3つのポイント",
-        videoType: "money情報",
-        duration: duration,
-        canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
-        content: {
-          description: "投資初心者が安全に始めるための基本知識",
-          structure: "基本知識→具体的方法→実践のコツ"
-        },
-        items: [
-          {
-            id: 1,
-            name: "少額から始める",
-            content: {
-              main: "月1万円からでも投資可能",
-              details: "つみたてNISAを活用すれば100円から始められます。無理のない金額から始めることが大切です"
-            }
-          },
-          {
-            id: 2,
-            name: "分散投資の重要性",
-            content: {
-              main: "リスクを分散して投資する",
-              details: "投資信託なら自動的に分散投資できます。1つの銘柄に集中するリスクを避けましょう"
-            }
-          },
-          {
-            id: 3,
-            name: "長期投資の効果",
-            content: {
-              main: "時間をかけてコツコツ投資",
-              details: "複利効果で20年後に大きな差が生まれます。短期的な値動きに惑わされないことが重要です"
-            }
-          }
-        ]
-      };
-    }
-
-    // 筋トレ・健康系の実用的情報
-    if (category === 'health' && keyword.includes('筋トレ')) {
-      return {
-        title: "筋トレ初心者が知っておくべき3つのポイント",
-        videoType: "health情報", 
-        duration: duration,
-        canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
-        content: {
-          description: "効果的で安全な筋トレを始めるための基本知識",
-          structure: "基本知識→具体的方法→実践のコツ"
-        },
-        items: [
-          {
-            id: 1,
-            name: "正しいフォームの重要性",
-            content: {
-              main: "怪我を防ぐために正しいフォームで行う",
-              details: "重量を軽くしても正しいフォームの方が効果的。YouTubeや書籍で基本を学びましょう"
-            }
-          },
-          {
-            id: 2,
-            name: "適切な休息期間",
-            content: {
-              main: "筋肉の回復に48-72時間必要",
-              details: "同じ筋肉を毎日鍛えるより、週2-3回の方が効果的。休息日も筋トレの一部です"
-            }
-          },
-          {
-            id: 3,
-            name: "栄養の基本知識",
-            content: {
-              main: "タンパク質を体重×1.5g摂取",
-              details: "筋肉の材料となるタンパク質は必須。鶏胸肉、卵、プロテインなどを活用しましょう"
-            }
-          }
-        ]
-      };
-    }
-
-    // 副業・ビジネス系の実用的情報
-    if (category === 'money' && keyword.includes('副業')) {
-      return {
-        title: "副業初心者が知っておくべき3つのポイント",
-        videoType: "money情報",
-        duration: duration,
-        canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
-        content: {
-          description: "安全で現実的な副業の始め方",
-          structure: "基本知識→具体的方法→実践のコツ"
-        },
-        items: [
-          {
-            id: 1,
-            name: "時間管理の重要性",
-            content: {
-              main: "本業に支障をきたさない時間配分",
-              details: "平日2時間、休日4時間から始める。無理をすると本業に影響が出ます"
-            }
-          },
-          {
-            id: 2,
-            name: "スキルを活かす副業選び",
-            content: {
-              main: "既存のスキルを活用できる分野",
-              details: "ライティング、デザイン、プログラミングなど、本業の経験を活かせる副業が成功しやすい"
-            }
-          },
-          {
-            id: 3,
-            name: "税務・確定申告の準備",
-            content: {
-              main: "年20万円を超えたら確定申告が必要",
-              details: "収支の記録を最初から付けておく。会計ソフトやアプリを活用しましょう"
-            }
-          }
-        ]
-      };
-    }
-
-    // プログラミング学習系の実用的情報
-    if (category === 'skill' && (keyword.includes('プログラミング') || keyword.includes('学習'))) {
-      return {
-        title: "プログラミング学習で知っておくべき3つのポイント",
-        videoType: "skill情報",
-        duration: duration,
-        canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
-        content: {
-          description: "効率的なプログラミング学習方法",
-          structure: "基本知識→具体的方法→実践のコツ"
-        },
-        items: [
-          {
-            id: 1,
-            name: "目標設定の重要性",
-            content: {
-              main: "何を作りたいかを明確にする",
-              details: "Webサイト、アプリ、ゲームなど具体的な目標があると学習が継続しやすい"
-            }
-          },
-          {
-            id: 2,
-            name: "実践重視の学習法",
-            content: {
-              main: "理論より実際にコードを書く",
-              details: "本や動画だけでなく、実際にプログラムを作ることで理解が深まります"
-            }
-          },
-          {
-            id: 3,
-            name: "コミュニティの活用",
-            content: {
-              main: "質問できる環境を作る",
-              details: "オンラインコミュニティやメンターを見つけて、わからないことを相談できる環境を作る"
-            }
-          }
-        ]
-      };
-    }
-
     // 汎用版（その他のキーワード）
     return {
       title: `${keyword}について知っておくべき3つのポイント`,
@@ -473,7 +347,6 @@ ${jsonTemplate}
     };
   }
 }
-
 
 const openaiService = new OpenAIService();
 export default openaiService;

@@ -1,4 +1,4 @@
-// src/services/integration/mediaIntegrator.js - スライド別画像多様化対応版
+// src/services/integration/mediaIntegrator.js - 動的コンテンツ対応版
 
 import imageService from '../media/imageService.js';
 import imageOptimizer from '../media/imageOptimizer.js';
@@ -10,15 +10,13 @@ class MediaIntegrator {
     this.imageCache = new Map();
     this.isProcessing = false;
     this.currentImages = [];
-    this.debugMode = true; // デバッグモード制御
+    this.debugMode = true;
   }
 
-  // デバッグモード設定
   setDebugMode(enabled) {
     this.debugMode = enabled;
   }
 
-  // デバッグログ出力
   log(...args) {
     if (this.debugMode) {
       console.log(...args);
@@ -47,267 +45,306 @@ class MediaIntegrator {
         return videoDesign;
       }
 
-      // 🆕 1. AI キーワード生成（スライド別多様化）
-      const aiKeywords = await keywordAnalyzer.generateImageKeywords(videoDesign);
-      this.log('🧠 AI生成キーワード:', aiKeywords ? '成功' : 'フォールバック使用');
+      // 🆕 動的コンテンツ分析でキーワード生成
+      const dynamicKeywords = await this.extractImageKeywordsFromContent(videoDesign);
+      this.log(`🔍 動的抽出キーワード: ${dynamicKeywords.length}件`);
 
-      // 2. 画像が必要なスライドを分析（AI強化版）
-      const imageRequirements = this.analyzeImageRequirementsEnhanced(videoDesign, aiKeywords);
-      this.log(`🔍 画像必要箇所: ${imageRequirements.length}件`);
-
-      // 3. 必要な画像を一括取得（スライド別多様化）
-      const fetchedImages = await this.fetchRequiredImagesEnhanced(imageRequirements, forceRefresh);
+      // 必要な画像を一括取得（各スライド用）
+      const fetchedImages = await this.fetchDynamicImages(dynamicKeywords, forceRefresh);
       
-      // 4. 画像を最適化
+      // 画像を最適化
       const optimizedImages = await imageOptimizer.optimizeMultipleImages(fetchedImages, imageLayout);
 
-      // 5. videoDesign に画像情報を統合
+      // videoDesign に画像情報を統合
       const enhancedDesign = this.enhanceVideoDesignWithImages(
         videoDesign, 
         optimizedImages, 
         imageLayout
       );
 
-      console.log('✅ 画像統合完了 - スライド別多様化実現');
+      console.log('✅ 画像統合完了 - 動的キーワード対応');
       return enhancedDesign;
 
     } catch (error) {
       console.error('🚨 画像統合エラー:', error);
-      // エラー時は元のvideoDesignを返す
       return videoDesign;
     } finally {
       this.isProcessing = false;
     }
   }
 
-  // 🆕 画像要件分析（AI強化版）
-  analyzeImageRequirementsEnhanced(videoDesign, aiKeywords = null) {
-    const requirements = [];
-
-    // 1. タイトルスライド用画像
-    const titleKeyword = aiKeywords?.title || videoDesign.title || 'main topic';
-    requirements.push({
+  // 🆕 動的コンテンツからキーワード抽出
+  async extractImageKeywordsFromContent(videoDesign) {
+    const keywords = [];
+    
+    // 1. タイトルスライド用
+    const titleKeyword = await this.generateKeywordFromText(videoDesign.title);
+    keywords.push({
       type: 'title',
       keyword: titleKeyword,
-      priority: 'high',
       slideIndex: 0,
-      uniqueId: 'title_0'
+      content: videoDesign.title
     });
 
-    // 2. 各項目用画像（スライド別多様化）
+    // 2. 各項目のサブスライド用（実際のコンテンツから生成）
     if (videoDesign.items && videoDesign.items.length > 0) {
-      videoDesign.items.forEach((item, itemIndex) => {
-        const baseKeyword = item.name || item.title || `item ${itemIndex + 1}`;
+      for (let itemIndex = 0; itemIndex < videoDesign.items.length; itemIndex++) {
+        const item = videoDesign.items[itemIndex];
         
-        // AI生成キーワードがあれば活用
-        const aiItemData = aiKeywords?.items?.[itemIndex];
-        
-        // 各項目につき3つのサブスライド用画像（それぞれ異なるキーワード）
+        // 各項目につき3つのサブスライド
         for (let subIndex = 0; subIndex < 3; subIndex++) {
-          let slideKeyword = baseKeyword;
+          let content = '';
           
-          // 🎯 スライド別キーワード多様化
-          if (aiItemData?.variations && aiItemData.variations[subIndex]) {
-            slideKeyword = aiItemData.variations[subIndex];
-          } else if (aiItemData?.main) {
-            slideKeyword = aiItemData.main + ` variation ${subIndex + 1}`;
-          } else {
-            // フォールバック: サブインデックス別バリエーション
-            slideKeyword = this.generateSubslideKeyword(baseKeyword, subIndex);
+          // コンテンツの優先順位で取得
+          if (subIndex === 0) {
+            content = item.name || item.title || '';
+          } else if (subIndex === 1) {
+            content = item.content?.main || item.description || '';
+          } else if (subIndex === 2) {
+            content = item.content?.details || item.content?.main || '';
           }
-
-          requirements.push({
+          
+          // コンテンツがない場合はアイテム名を使用
+          if (!content) {
+            content = item.name || item.title || `項目${itemIndex + 1}`;
+          }
+          
+          const slideKeyword = await this.generateKeywordFromText(content, item.name);
+          
+          keywords.push({
             type: 'item',
             keyword: slideKeyword,
-            itemIndex: itemIndex,
-            subSlideIndex: subIndex,
-            priority: subIndex === 0 ? 'high' : 'medium',
             slideIndex: 1 + (itemIndex * 3) + subIndex,
-            uniqueId: `item_${itemIndex}_${subIndex}`
+            content: content,
+            itemIndex: itemIndex,
+            subIndex: subIndex
           });
         }
-      });
+      }
     }
 
-    // 3. まとめスライド用画像
-    const summaryKeyword = aiKeywords?.summary || 'thumbs up positive feedback';
-    requirements.push({
+    // 3. まとめスライド用
+    const summaryKeyword = await this.generateKeywordFromText('いいね チャンネル登録 お願いします');
+    keywords.push({
       type: 'summary',
       keyword: summaryKeyword,
-      priority: 'low',
-      slideIndex: requirements.length,
-      uniqueId: 'summary_final'
+      slideIndex: keywords.length,
+      content: 'まとめ'
     });
 
-    return requirements;
+    return keywords;
   }
 
-  // 🆕 サブスライドキーワード生成
-  generateSubslideKeyword(baseKeyword, subIndex) {
-    const variations = {
-      0: baseKeyword, // オリジナル
-      1: baseKeyword + ' lifestyle modern', // スタイリッシュ版
-      2: baseKeyword + ' bright natural light' // ナチュラル版
-    };
-    
-    // 子育てなど特定キーワードの場合
-    if (baseKeyword.includes('子育て')) {
-      const childcareVariations = {
-        0: 'happy family parenting children',
-        1: 'parent child bonding activities',
-        2: 'family lifestyle daily routine'
-      };
-      return childcareVariations[subIndex] || childcareVariations[0];
+  // 🆕 簡易テキスト→キーワード変換（AIエラー回避）
+  async generateKeywordFromText(text, fallback = 'lifestyle modern') {
+    try {
+      // まずAI生成を試す
+      const slideKeywords = await keywordAnalyzer.generateSlideSpecificKeywords(
+        text,
+        { type: 'dynamic', index: 0, subIndex: 0 }
+      );
+      
+      if (slideKeywords && slideKeywords.primary) {
+        return slideKeywords.primary;
+      }
+    } catch (error) {
+      console.warn('⚠️ AI キーワード生成失敗:', error.message);
     }
     
-    return variations[subIndex] || variations[0];
+    // AIが失敗した場合、簡易変換を使用
+    return this.simpleTextToKeyword(text, fallback);
   }
 
-  // 🆕 必要な画像を一括取得（スライド別多様化版）
-  async fetchRequiredImagesEnhanced(requirements, forceRefresh = false) {
-    this.log(`🔄 ${requirements.length}件の画像を取得中（スライド別多様化）...`);
+  // 🆕 簡易テキスト→キーワード変換
+  simpleTextToKeyword(text, fallback = 'lifestyle modern') {
+    if (!text) return fallback;
     
-    // 重複回避用トラッキング
+    const cleanText = text.toLowerCase();
+    
+    // 日本語コンテンツの場合
+    if (/[ひらがなカタカナ漢字]/.test(text)) {
+      if (cleanText.includes('コミュニケーション') || cleanText.includes('話') || cleanText.includes('会話')) {
+        return 'family conversation talking together';
+      }
+      if (cleanText.includes('遊び') || cleanText.includes('ゲーム') || cleanText.includes('活動')) {
+        return 'children playing games activities fun';
+      }
+      if (cleanText.includes('学習') || cleanText.includes('勉強') || cleanText.includes('教育')) {
+        return 'learning education knowledge books';
+      }
+      if (cleanText.includes('ルーティン') || cleanText.includes('習慣')) {
+        return 'daily routine schedule planning';
+      }
+      if (cleanText.includes('褒める') || cleanText.includes('ポジティブ')) {
+        return 'praise encouragement positive parenting';
+      }
+      if (cleanText.includes('成長') || cleanText.includes('発達')) {
+        return 'child development growth progress';
+      }
+      if (cleanText.includes('読書') || cleanText.includes('本') || cleanText.includes('読み聞かせ')) {
+        return 'parent reading book child story';
+      }
+      if (cleanText.includes('料理') || cleanText.includes('食事')) {
+        return 'cooking food kitchen family meal';
+      }
+      if (cleanText.includes('健康') || cleanText.includes('運動')) {
+        return 'healthy lifestyle fitness wellness';
+      }
+      if (cleanText.includes('子育て') || cleanText.includes('育児')) {
+        return 'parenting family children happy';
+      }
+      if (cleanText.includes('いいね') || cleanText.includes('チャンネル登録') || cleanText.includes('お願い')) {
+        return 'thumbs up positive feedback like';
+      }
+      
+      // 汎用的な日本語
+      return 'family lifestyle children happy';
+    }
+    
+    // 英語コンテンツの場合
+    if (cleanText.includes('communication') || cleanText.includes('talk')) {
+      return 'family conversation talking together';
+    }
+    if (cleanText.includes('play') || cleanText.includes('game')) {
+      return 'children playing games activities';
+    }
+    if (cleanText.includes('learn') || cleanText.includes('education')) {
+      return 'learning education knowledge';
+    }
+    if (cleanText.includes('routine') || cleanText.includes('habit')) {
+      return 'daily routine schedule planning';
+    }
+    if (cleanText.includes('positive') || cleanText.includes('praise')) {
+      return 'praise encouragement positive';
+    }
+    if (cleanText.includes('like') || cleanText.includes('subscribe') || cleanText.includes('thumbs')) {
+      return 'thumbs up positive feedback like';
+    }
+    
+    return fallback;
+  }
+
+  // 🆕 動的画像一括取得
+  async fetchDynamicImages(keywords, forceRefresh = false) {
+    console.log(`🔄 ${keywords.length}件の画像を取得中...`);
+    
     const usedUrls = new Set();
-    const retryableImages = [];
     
-    const fetchPromises = requirements.map(async (req, index) => {
-      // 🎯 ユニークなキャッシュキー（スライド別）
-      const cacheKey = `${req.uniqueId}_${req.keyword}`;
+    const fetchPromises = keywords.map(async (keywordData, index) => {
+      const { keyword, slideIndex, type } = keywordData;
+      const cacheKey = `slide_${slideIndex}_${keyword}`;
       
       // キャッシュチェック
       if (!forceRefresh && this.imageCache.has(cacheKey)) {
-        this.log(`📦 キャッシュ: ${req.keyword.substring(0, 30)}...`);
-        const cachedImage = this.imageCache.get(cacheKey);
-        return { ...cachedImage, ...req };
+        return { ...this.imageCache.get(cacheKey), slideIndex };
       }
 
       try {
-        // 🆕 keywordAnalyzer を使用してスライド別キーワード生成
-        const slideKeywords = await keywordAnalyzer.generateSlideSpecificKeywords(
-          req.keyword,
-          {
-            type: req.type,
-            index: req.itemIndex || 0,
-            subIndex: req.subSlideIndex || 0
-          }
-        );
-
-        // メインキーワードまたは代替案を使用
-        const searchKeyword = slideKeywords?.primary || req.keyword;
-        keywordAnalyzer.markKeywordAsUsed(searchKeyword);
-
         // 画像取得
-        const image = await imageService.fetchMainImage(searchKeyword, {
-          orientation: req.type === 'title' ? 'landscape' : 'landscape',
-          type: req.type
+        const image = await imageService.fetchMainImage(keyword, {
+          orientation: 'landscape',
+          type: type
         });
 
         if (image && image.url) {
-          // 🔄 重複チェック - 同じ画像URLの場合は代替案を使用
-          if (usedUrls.has(image.url) && slideKeywords?.alternatives) {
-            this.log(`🔄 重複検知 - 代替案使用: ${req.keyword}`);
+          // 重複チェック
+          if (usedUrls.has(image.url)) {
+            // 重複の場合、キーワードを少し変更して再取得
+            const altKeyword = keyword + ' variation ' + (index % 3 + 1);
+            const altImage = await imageService.fetchMainImage(altKeyword, {
+              orientation: 'landscape',
+              type: type
+            });
             
-            for (const altKeyword of slideKeywords.alternatives) {
-              if (!keywordAnalyzer.usedKeywords.has(altKeyword)) {
-                const altImage = await imageService.fetchMainImage(altKeyword, {
-                  orientation: 'landscape',
-                  type: req.type
-                });
-                
-                if (altImage && altImage.url && !usedUrls.has(altImage.url)) {
-                  keywordAnalyzer.markKeywordAsUsed(altKeyword);
-                  usedUrls.add(altImage.url);
-                  
-                  const imageElement = await imageService.preloadImage(altImage.url);
-                  const enhancedImage = {
-                    ...altImage,
-                    imageElement: imageElement,
-                    ...req,
-                    keyword: altKeyword // 実際に使用したキーワードを記録
-                  };
-
-                  this.imageCache.set(cacheKey, enhancedImage);
-                  return enhancedImage;
-                }
-              }
+            if (altImage && altImage.url && !usedUrls.has(altImage.url)) {
+              usedUrls.add(altImage.url);
+              const imageElement = await imageService.preloadImage(altImage.url);
+              const result = {
+                ...altImage,
+                imageElement: imageElement,
+                slideIndex: slideIndex,
+                keyword: altKeyword,
+                type: type,
+                ready: true
+              };
+              this.imageCache.set(cacheKey, result);
+              return result;
             }
+          } else {
+            usedUrls.add(image.url);
           }
-
-          // 通常の処理
-          usedUrls.add(image.url);
+          
           const imageElement = await imageService.preloadImage(image.url);
-          const enhancedImage = {
+          const result = {
             ...image,
             imageElement: imageElement,
-            ...req,
-            keyword: searchKeyword
+            slideIndex: slideIndex,
+            keyword: keyword,
+            type: type,
+            ready: true
           };
-
-          this.imageCache.set(cacheKey, enhancedImage);
-          return enhancedImage;
+          
+          this.imageCache.set(cacheKey, result);
+          return result;
         } else {
-          // プレースホルダー画像
           return {
-            ...req,
+            slideIndex: slideIndex,
+            keyword: keyword,
+            type: type,
             isPlaceholder: true,
-            imageElement: null
+            imageElement: null,
+            ready: false
           };
         }
       } catch (error) {
-        console.warn(`⚠️ 画像取得失敗 (${req.keyword}):`, error.message);
+        console.warn(`⚠️ 画像取得失敗 (${keyword}):`, error.message);
         return {
-          ...req,
+          slideIndex: slideIndex,
+          keyword: keyword,
+          type: type,
           isPlaceholder: true,
-          imageElement: null
+          imageElement: null,
+          ready: false
         };
       }
     });
 
     const results = await Promise.all(fetchPromises);
-    console.log(`✅ スライド別画像取得完了: ${results.length}件`);
-    
-    // 統計情報
-    const uniqueImages = new Set(results.filter(r => r.url).map(r => r.url)).size;
-    const placeholders = results.filter(r => r.isPlaceholder).length;
-    
-    console.log(`📊 画像統計: ユニーク${uniqueImages}件, プレースホルダー${placeholders}件`);
+    console.log(`✅ 動的画像取得完了: 全${results.length}件, ユニーク${usedUrls.size}件`);
     
     this.currentImages = results;
     return results;
   }
 
-  // src/services/integration/mediaIntegrator.js - スライドインデックス修正版
-
-    // 🎯 修正箇所1: enhanceVideoDesignWithImages メソッド（行200付近）
-    enhanceVideoDesignWithImages(videoDesign, optimizedImages, layout) {
+  // videoDesign に画像情報を統合
+  enhanceVideoDesignWithImages(videoDesign, optimizedImages, layout) {
     const enhanced = JSON.parse(JSON.stringify(videoDesign)); // ディープコピー
 
     // 画像情報をメタデータに追加
     enhanced.media = {
-        images: {
+      images: {
         layout: layout,
         total: optimizedImages.length,
         optimized: optimizedImages.filter(img => img.optimized?.optimized).length,
         placeholders: optimizedImages.filter(img => img.optimized?.isPlaceholder).length,
         unique: new Set(optimizedImages.filter(img => img.url).map(img => img.url)).size
-        },
-        settings: {
+      },
+      settings: {
         imageLayout: layout,
         imageQuality: 'high',
         processingTime: Date.now(),
         diversification: true
-        }
+      }
     };
 
     // 🔧 修正：slideImages配列に確実にslideIndexを設定
     enhanced.slideImages = [];
     
     optimizedImages.forEach((image, index) => {
-        // slideIndexが設定されていない場合はindexを使用
-        const slideIndex = image.slideIndex !== undefined ? image.slideIndex : index;
-        
-        enhanced.slideImages[slideIndex] = {
+      // slideIndexが設定されていない場合はindexを使用
+      const slideIndex = image.slideIndex !== undefined ? image.slideIndex : index;
+      
+      enhanced.slideImages[slideIndex] = {
         slideIndex: slideIndex, // 🆕 slideIndexを明示的に設定
         type: image.type,
         keyword: image.keyword,
@@ -315,26 +352,23 @@ class MediaIntegrator {
         itemIndex: image.itemIndex,
         subSlideIndex: image.subSlideIndex,
         ready: image.ready,
-        uniqueId: image.uniqueId,
+        uniqueId: `slide_${slideIndex}`,
         isUnique: true,
         url: image.url, // 🆕 デバッグ用URL追加
         imageElement: image.imageElement // 🆕 imageElement追加
-        };
-        
-        console.log(`📌 スライド${slideIndex}画像設定:`, image.keyword?.substring(0, 20));
+      };
+      
+      console.log(`✅ スライド${slideIndex}画像設定: ${image.keyword?.substring(0, 30)} (from: "${image.keyword?.substring(0, 50)}...")`);
     });
 
     console.log(`🎨 slideImages配列生成完了: ${enhanced.slideImages.length}スライド`);
-    console.log('📋 各スライドの画像:', enhanced.slideImages.map((img, i) => 
-        `[${i}] ${img?.keyword?.substring(0, 15) || 'なし'}`
-    ));
     
     return enhanced;
-    }
+  }
 
   // 画像付き動画生成（videoComposer 拡張）
   async generateVideoWithImages(videoDesign, onProgress) {
-    console.log('🎬 スライド別画像付き動画生成開始');
+    console.log('🎬 動画生成開始: 画像統合版');
 
     try {
       // 1. 画像統合済みかチェック
@@ -358,37 +392,14 @@ class MediaIntegrator {
     }
   }
 
-  // 🆕 画像多様化統計
-  getDiversificationStats() {
-    if (!this.currentImages || this.currentImages.length === 0) {
-      return { total: 0, unique: 0, diversity: 0 };
-    }
-
-    const total = this.currentImages.length;
-    const uniqueUrls = new Set(
-      this.currentImages
-        .filter(img => img.url && !img.isPlaceholder)
-        .map(img => img.url)
-    ).size;
-    
-    const diversity = total > 0 ? (uniqueUrls / total * 100).toFixed(1) : 0;
-
-    return {
-      total: total,
-      unique: uniqueUrls,
-      diversity: parseFloat(diversity),
-      placeholders: this.currentImages.filter(img => img.isPlaceholder).length
-    };
-  }
-
-  // 画像プレビュー用データ取得（多様化情報付き）
+  // 画像プレビュー用データ取得
   getImagePreviewData() {
     if (!this.currentImages || this.currentImages.length === 0) {
       return [];
     }
 
     return this.currentImages.map(image => ({
-      id: image.id || `${image.type}_${image.slideIndex}`,
+      id: image.id || `slide_${image.slideIndex}`,
       type: image.type,
       keyword: image.keyword,
       slideIndex: image.slideIndex,
@@ -396,8 +407,8 @@ class MediaIntegrator {
       isPlaceholder: image.isPlaceholder || image.optimized?.isPlaceholder,
       ready: image.ready,
       photographer: image.photographer,
-      uniqueId: image.uniqueId, // 🆕 ユニークID
-      isDiversified: true // 🆕 多様化フラグ
+      uniqueId: `slide_${image.slideIndex}`,
+      isDiversified: true
     }));
   }
 
@@ -445,28 +456,23 @@ class MediaIntegrator {
     this.imageCache.clear();
     this.currentImages = [];
     imageService.clearCache();
-    keywordAnalyzer.clearCache(); // 🆕 keywordAnalyzer のキャッシュもクリア
+    keywordAnalyzer.clearCache();
     console.log('🗑️ 画像統合キャッシュをクリア');
   }
 
-  // 統合状況の取得（多様化情報付き）
+  // 統合状況の取得
   getIntegrationStatus() {
-    const diversityStats = this.getDiversificationStats();
-    
     return {
       isProcessing: this.isProcessing,
       cachedImages: this.imageCache.size,
       currentImages: this.currentImages.length,
-      lastProcessed: this.currentImages.length > 0 ? 'Ready' : 'None',
-      diversification: diversityStats, // 🆕 多様化統計
-      keywordStats: keywordAnalyzer.getStats() // 🆕 キーワード統計
+      lastProcessed: this.currentImages.length > 0 ? 'Ready' : 'None'
     };
   }
 
   // メモリクリーンアップ
   cleanup() {
     this.clearImageCache();
-    imageOptimizer.cleanup();
     this.isProcessing = false;
     console.log('🧹 MediaIntegrator クリーンアップ完了');
   }

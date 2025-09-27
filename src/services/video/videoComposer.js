@@ -1,4 +1,4 @@
-// src/services/video/videoComposer.js - シンプル版（スライド別画像対応）
+// src/services/video/videoComposer.js - スライド別画像取得修正版
 
 import { API_CONFIG } from '../../config/api.js';
 import loopController from './loopController.js';
@@ -170,31 +170,35 @@ class VideoComposer {
     }
   }
 
-  // src/services/video/videoComposer.js - getSlideImage修正版
-
-  // 🎯 修正箇所: getSlideImage メソッド（行100付近）
+  // 🎯 修正箇所: getSlideImage メソッド（スライド別画像取得）
   getSlideImage(slideImages, slideIndex) {
+    if (!slideImages || slideImages.length === 0) {
+      console.log(`❌ スライド${slideIndex}: 画像配列が空`);
+      return null;
+    }
+    
     console.log(`🔍 スライド${slideIndex}の画像を検索...`);
     console.log('📦 利用可能な画像配列:', slideImages.length, '件');
     
-    // 🔧 修正1: 単純にインデックスで取得
-    if (slideImages && slideImages[slideIndex]) {
+    // 🔧 修正1: 直接インデックスアクセス（最優先）
+    if (slideImages[slideIndex]) {
       const image = slideImages[slideIndex];
       console.log(`✅ スライド${slideIndex}画像取得:`, image.keyword?.substring(0, 20) + '...');
       return image;
     }
     
-    // 🔧 修正2: slideIndexプロパティで検索（フォールバック）
-    const foundImage = slideImages.find(img => img.slideIndex === slideIndex);
-    if (foundImage) {
-      console.log(`✅ スライド${slideIndex}画像取得(プロパティ検索):`, foundImage.keyword?.substring(0, 20) + '...');
-      return foundImage;
+    // 🔧 修正2: slideIndexプロパティで検索
+    const foundByProperty = slideImages.find(img => img.slideIndex === slideIndex);
+    if (foundByProperty) {
+      console.log(`✅ スライド${slideIndex}画像取得(プロパティ検索):`, foundByProperty.keyword?.substring(0, 20) + '...');
+      return foundByProperty;
     }
     
-    // 🔧 修正3: 配列が短い場合は最初の画像を使用
-    if (slideImages && slideImages.length > 0) {
-      const fallbackImage = slideImages[0];
-      console.log(`⚠️ スライド${slideIndex}画像なし - フォールバック使用:`, fallbackImage.keyword?.substring(0, 20) + '...');
+    // 🔧 修正3: 循環参照でフォールバック（重複回避）
+    const fallbackIndex = slideIndex % slideImages.length;
+    const fallbackImage = slideImages[fallbackIndex];
+    if (fallbackImage) {
+      console.log(`⚠️ スライド${slideIndex}画像なし - フォールバック[${fallbackIndex}]使用:`, fallbackImage.keyword?.substring(0, 20) + '...');
       return fallbackImage;
     }
     

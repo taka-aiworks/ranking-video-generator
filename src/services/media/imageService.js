@@ -1,4 +1,4 @@
-// src/services/media/imageService.js - 構文エラー完全修正版
+// src/services/media/imageService.js - 動的キーワード対応版
 
 class ImageService {
   constructor() {
@@ -8,15 +8,6 @@ class ImageService {
     this.cache = new Map();
     
     console.log('🔑 Unsplash API Key設定完了');
-    
-    // 分野別キーワード変換マップ
-    this.keywordMap = {
-      '子育てでやったほうがいいこと1：読み聞かせをする': 'parent reading book to child',
-      '子育てでやったほうがいいこと2：共同遊びをする': 'family playing together children',  
-      '子育てでやったほうがいいこと3：ルーティンを作る': 'family daily routine schedule',
-      '子育てでやったほうがいいことについて知っておくべき3つのポイント': 'happy family parenting children',
-      'youtube subscribe like button': 'thumbs up positive feedback like'
-    };
     
     // NGキーワード（YouTube矢印など避けたい画像）
     this.avoidKeywords = [
@@ -36,8 +27,8 @@ class ImageService {
     try {
       console.log('🔍 画像検索開始:', keyword);
       
-      // キーワード変換
-      const enhancedKeyword = this.translateKeyword(keyword, options.type);
+      // 🆕 動的キーワード変換（固定マッピング削除）
+      const enhancedKeyword = this.dynamicTranslateKeyword(keyword, options.type);
       console.log('✨ 変換後キーワード:', enhancedKeyword);
       
       if (!this.apiKey) {
@@ -69,45 +60,59 @@ class ImageService {
     }
   }
 
-  // キーワード変換
-  translateKeyword(keyword, type) {
-    // 完全一致チェック
-    if (this.keywordMap[keyword]) {
-      return this.keywordMap[keyword];
+  // 🆕 動的キーワード変換（固定マッピング削除）
+  dynamicTranslateKeyword(keyword, type) {
+    // 日本語が含まれている場合の基本変換
+    const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
+    
+    if (hasJapanese) {
+      // 基本的な日本語→英語変換
+      let englishKeyword = keyword;
+      
+      // コンテンツ内容に基づく動的変換
+      if (keyword.includes('コミュニケーション') || keyword.includes('話') || keyword.includes('会話')) {
+        englishKeyword = 'family conversation talking together';
+      } else if (keyword.includes('遊び') || keyword.includes('ゲーム') || keyword.includes('活動')) {
+        englishKeyword = 'children playing games activities fun';
+      } else if (keyword.includes('学習') || keyword.includes('勉強') || keyword.includes('教育')) {
+        englishKeyword = 'learning education knowledge books';
+      } else if (keyword.includes('ルーティン') || keyword.includes('習慣') || keyword.includes('日課')) {
+        englishKeyword = 'daily routine schedule planning';
+      } else if (keyword.includes('褒める') || keyword.includes('ポジティブ') || keyword.includes('励ます')) {
+        englishKeyword = 'praise encouragement positive parenting';
+      } else if (keyword.includes('成長') || keyword.includes('発達')) {
+        englishKeyword = 'child development growth progress';
+      } else if (keyword.includes('健康') || keyword.includes('運動') || keyword.includes('体')) {
+        englishKeyword = 'healthy lifestyle fitness wellness';
+      } else if (keyword.includes('料理') || keyword.includes('食事') || keyword.includes('キッチン')) {
+        englishKeyword = 'cooking food kitchen family meal';
+      } else if (keyword.includes('読書') || keyword.includes('本') || keyword.includes('読み聞かせ')) {
+        englishKeyword = 'reading books parent child story';
+      } else if (keyword.includes('外出') || keyword.includes('公園') || keyword.includes('散歩')) {
+        englishKeyword = 'outdoor family park walking nature';
+      } else if (keyword.includes('子育て') || keyword.includes('育児') || keyword.includes('親子')) {
+        englishKeyword = 'parenting family children happy';
+      } else if (keyword.includes('youtube') || keyword.includes('チャンネル登録') || keyword.includes('いいね')) {
+        englishKeyword = 'thumbs up positive feedback like';
+      } else {
+        // 汎用的な変換
+        englishKeyword = 'family lifestyle children happy';
+      }
+      
+      return englishKeyword;
     }
     
-    // 部分一致チェック
-    if (keyword.includes('子育て') && keyword.includes('読み聞かせ')) {
-      return 'parent reading book to child';
-    }
-    if (keyword.includes('子育て') && keyword.includes('遊び')) {
-      return 'family playing together children';
-    }
-    if (keyword.includes('子育て') && keyword.includes('ルーティン')) {
-      return 'family daily routine schedule';
-    }
-    if (keyword.includes('子育て')) {
-      return 'happy family parenting children';
-    }
+    // 英語キーワードの場合、そのまま使用
     if (keyword.includes('youtube') || keyword.includes('subscribe')) {
       return 'thumbs up positive feedback like';
     }
     
-    // タイプ別変換
+    // タイプ別の調整
     if (type === 'title') {
-      return 'happy family lifestyle beautiful';
-    }
-    if (type === 'item') {
-      return keyword.includes('子') ? 'children family lifestyle' : 'lifestyle modern bright';
+      return keyword + ' lifestyle beautiful';
     }
     if (type === 'summary') {
       return 'thumbs up like positive feedback';
-    }
-    
-    // 日本語が含まれている場合の汎用変換
-    const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
-    if (hasJapanese) {
-      return 'family lifestyle children happy';
     }
     
     return keyword;
@@ -143,14 +148,18 @@ class ImageService {
   generateKeywordVariations(baseKeyword) {
     const variations = [baseKeyword];
     
-    const enhanced = this.translateKeyword(baseKeyword);
+    const enhanced = this.dynamicTranslateKeyword(baseKeyword);
     if (enhanced !== baseKeyword) {
       variations.push(enhanced);
     }
     
-    if (baseKeyword.includes('子育て')) {
-      variations.push('happy family moment');
-      variations.push('parent child bonding');
+    // 動的バリエーション追加
+    if (baseKeyword.includes('family') || baseKeyword.includes('children')) {
+      variations.push(baseKeyword + ' lifestyle modern');
+      variations.push(baseKeyword + ' bright natural light');
+    } else {
+      variations.push(baseKeyword + ' professional clean');
+      variations.push(baseKeyword + ' minimalist design');
     }
     
     return variations.slice(0, 3);
@@ -223,9 +232,9 @@ class ImageService {
   // プレースホルダー画像生成
   createPlaceholder(keyword) {
     const placeholders = {
-      '子育て': { bg: '#e8f4fd', text: '👪 家族のイメージ', color: '#1976d2' },
-      '育児': { bg: '#fff3e0', text: '🍼 育児のイメージ', color: '#f57c00' },
-      '節約': { bg: '#e8f5e8', text: '💰 節約のイメージ', color: '#388e3c' },
+      'family': { bg: '#e8f4fd', text: '👪 家族のイメージ', color: '#1976d2' },
+      'children': { bg: '#fff3e0', text: '🧒 子供のイメージ', color: '#f57c00' },
+      'learning': { bg: '#e8f5e8', text: '📚 学習のイメージ', color: '#388e3c' },
       'default': { bg: '#f5f5f5', text: '🖼️ 関連画像', color: '#616161' }
     };
     
