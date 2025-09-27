@@ -1,11 +1,12 @@
-// src/services/ai/keywordAnalyzer.js - スライド別対応改良版
+// src/services/ai/keywordAnalyzer.js - 動的翻訳統合版
 
 import openaiService from '../api/openai.js';
+import translationService from '../translation/translationService.js';
 
 class KeywordAnalyzer {
   constructor() {
     this.cache = new Map();
-    this.usedKeywords = new Set(); // 重複回避用
+    this.usedKeywords = new Set();
   }
 
   // メイン機能：コンテンツから最適な画像キーワードを自動生成
@@ -30,8 +31,8 @@ class KeywordAnalyzer {
             content: prompt
           }
         ],
-        max_tokens: 500, // 増量：スライド別対応で多くのキーワードが必要
-        temperature: 0.4 // 少し上げる：バリエーション増加
+        max_tokens: 500,
+        temperature: 0.4
       });
 
       const keywords = this.parseKeywordResponse(response);
@@ -45,7 +46,7 @@ class KeywordAnalyzer {
     }
   }
 
-  // 🆕 スライド別キーワード生成（新規追加）
+  // スライド別キーワード生成（動的翻訳使用）
   async generateSlideSpecificKeywords(content, slideInfo = {}) {
     const { type = 'general', index = 0, subIndex = 0 } = slideInfo;
     const cacheKey = `slide_${content}_${type}_${index}_${subIndex}`;
@@ -55,26 +56,18 @@ class KeywordAnalyzer {
     }
 
     try {
-      const prompt = this.createSlidePrompt(content, slideInfo);
-      const response = await openaiService.createCompletion({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "あなたは画像検索の専門家です。スライド内容から、Unsplash検索に最適で重複しない英語キーワードを生成してください。"
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        max_tokens: 200,
-        temperature: 0.5 // バリエーション重視
+      // translationService を使用して動的翻訳
+      const translated = await translationService.translateForImageSearch(content, {
+        type: type,
+        variation: subIndex
       });
 
-      const keywords = this.parseSlideResponse(response);
-      this.cache.set(cacheKey, keywords);
+      const keywords = {
+        primary: translated,
+        alternatives: await translationService.generateVariations(content, 3)
+      };
       
+      this.cache.set(cacheKey, keywords);
       return keywords;
 
     } catch (error) {
@@ -102,10 +95,6 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
     {
       "main": "アイテム2メインキーワード", 
       "variations": ["バリエーション1", "バリエーション2", "バリエーション3"]
-    },
-    {
-      "main": "アイテム3メインキーワード",
-      "variations": ["バリエーション1", "バリエーション2", "バリエーション3"]
     }
   ],
   "summary": "まとめ画像用キーワード（3-5単語）"
@@ -113,41 +102,13 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
 
 条件：
 - 写真として実在しそうな具体的なキーワード
-- 抽象的すぎない、視覚的に表現可能なもの
 - YouTube、ロゴ、アイコン、矢印等は絶対に避ける
 - 人物、物品、風景など実際の写真を想定
 - 各アイテムで異なるバリエーションを提供
     `.trim();
   }
 
-  // 🆕 スライド別プロンプト作成
-  createSlidePrompt(content, slideInfo) {
-    const { type, index, subIndex } = slideInfo;
-    const usedList = Array.from(this.usedKeywords).join(', ');
-    
-    return `
-スライド内容: ${content}
-スライド種類: ${type}
-スライド番号: ${index}
-サブスライド: ${subIndex}
-使用済みキーワード（避ける）: ${usedList}
-
-上記の情報から、Unsplash画像検索用の英語キーワードを3-5個生成してください：
-
-{
-  "primary": "メインキーワード（3-4単語）",
-  "alternatives": ["代替案1", "代替案2", "代替案3"]
-}
-
-条件：
-- 使用済みキーワードと重複しない
-- YouTube、矢印、ロゴ、ボタン等は絶対に避ける
-- 実際に撮影された写真として存在しそう
-- スライド番号${index}とサブ${subIndex}に適した内容
-    `.trim();
-  }
-
-  // レスポンス解析（改良版）
+  // レスポンス解析
   parseKeywordResponse(response) {
     try {
       const content = response.choices[0].message.content;
@@ -156,7 +117,6 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         
-        // 新しい構造に対応
         return {
           title: parsed.title || 'concept lifestyle',
           items: parsed.items || [],
@@ -171,104 +131,31 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
     }
   }
 
-  // 🆕 スライド別レスポンス解析
-  parseSlideResponse(response) {
-    try {
-      const content = response.choices[0].message.content;
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          primary: parsed.primary || 'lifestyle modern',
-          alternatives: parsed.alternatives || ['concept', 'beautiful', 'clean']
-        };
-      }
-      
-      // JSON形式でない場合のテキスト解析
-      const words = content.match(/\b[a-zA-Z]{3,}\b/g) || [];
-      return {
-        primary: words.slice(0, 3).join(' ') || 'lifestyle modern',
-        alternatives: words.slice(3, 6)
-      };
-      
-    } catch (error) {
-      return {
-        primary: 'lifestyle modern clean',
-        alternatives: ['concept beautiful', 'professional bright', 'natural light']
-      };
-    }
-  }
-
-  // フォールバック（AI失敗時）- 改良版
+  // フォールバック（AI失敗時）
   generateFallbackKeywords(videoDesign) {
     const title = videoDesign.title || '';
     
-    // コンテンツ分析ベース
-    if (title.includes('子育て') || title.includes('育児')) {
-      return {
-        title: "family parenting children happy",
-        items: [
-          {
-            main: "parent child communication love",
-            variations: ["family conversation", "parent teaching child", "family bonding time"]
-          },
-          {
-            main: "family time together activities",
-            variations: ["children playing", "family fun", "home activities"]
-          },
-          {
-            main: "children learning education play",
-            variations: ["child development", "educational toys", "learning together"]
-          }
-        ],
-        summary: "thumbs up positive feedback appreciation"
-      };
-    }
-    
-    if (title.includes('ワイヤレスイヤホン') || title.includes('イヤホン')) {
-      return {
-        title: "wireless earbuds headphones music",
-        items: [
-          {
-            main: "bluetooth earbuds white background",
-            variations: ["earbuds technology", "wireless audio", "modern headphones"]
-          },
-          {
-            main: "person listening music headphones",
-            variations: ["music lifestyle", "audio enjoyment", "sound quality"]
-          },
-          {
-            main: "audio device technology modern",
-            variations: ["tech gadgets", "electronic devices", "innovation"]
-          }
-        ],
-        summary: "thumbs up tech review positive"
-      };
-    }
-    
-    // デフォルト（各スライドで異なるバリエーション）
     return {
-      title: "concept idea lightbulb inspiration",
+      title: "lifestyle concept beautiful",
       items: [
         {
-          main: "business concept professional",
-          variations: ["workplace modern", "office lifestyle", "professional environment"]
+          main: "family lifestyle modern",
+          variations: ["family conversation", "parent teaching child", "family bonding time"]
         },
         {
-          main: "lifestyle modern clean",
-          variations: ["minimalist design", "contemporary living", "bright space"]
+          main: "lifestyle bright clean",
+          variations: ["modern design", "contemporary living", "bright space"]
         },
         {
-          main: "success achievement goal",
-          variations: ["victory celebration", "accomplishment", "positive outcome"]
+          main: "positive concept beautiful",
+          variations: ["success celebration", "accomplishment", "positive outcome"]
         }
       ],
-      summary: "positive feedback thumbs up"
+      summary: "thumbs up positive feedback"
     };
   }
 
-  // 🆕 スライド別フォールバック
+  // スライド別フォールバック
   generateSlideKeywordFallback(content, slideInfo) {
     const { type, index } = slideInfo;
     
@@ -293,12 +180,12 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
     };
   }
 
-  // 🆕 キーワード重複チェック・追加
+  // キーワード重複チェック・追加
   markKeywordAsUsed(keyword) {
     this.usedKeywords.add(keyword);
   }
 
-  // 🆕 未使用キーワード取得
+  // 未使用キーワード取得
   getUnusedKeyword(candidates) {
     for (const candidate of candidates) {
       if (!this.usedKeywords.has(candidate)) {
@@ -316,7 +203,6 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
   enhanceKeywords(aiKeywords, userPreferences = {}) {
     const enhanced = { ...aiKeywords };
     
-    // ユーザー設定による調整
     if (userPreferences.style === 'minimalist') {
       enhanced.title += " clean minimalist white background";
     }
@@ -333,7 +219,7 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
     return enhanced;
   }
 
-  // 🆕 統計情報取得
+  // 統計情報取得
   getStats() {
     return {
       cacheSize: this.cache.size,
@@ -342,7 +228,7 @@ ${videoDesign.items?.map((item, i) => `${i+1}. ${item.name || item.title}: ${ite
     };
   }
 
-  // キャッシュクリア（改良版）
+  // キャッシュクリア
   clearCache() {
     this.cache.clear();
     this.usedKeywords.clear();

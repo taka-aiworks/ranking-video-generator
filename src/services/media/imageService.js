@@ -1,24 +1,22 @@
-// src/services/media/imageService.js - 動的翻訳統合版
+// src/services/media/imageService.js - 二重翻訳回避版
 
 import translationService from '../translation/translationService.js';
 
 class ImageService {
   constructor() {
-    // 直接API Key設定（確実に動作）
     this.apiKey = '8L33qjsyEuni44KLmCnBJUjKNmf9PkImDpoC7CKTR0I';
     this.baseUrl = 'https://api.unsplash.com';
     this.cache = new Map();
     
     console.log('🔑 Unsplash API Key設定完了');
     
-    // NGキーワード（YouTube矢印など避けたい画像）
+    // NGキーワード（YouTube矢印など）
     this.avoidKeywords = [
       'subscribe button', 'youtube arrow', 'red arrow', 'play button',
       'logo', 'icon', 'graphic design', 'vector', 'youtube logo',
       'arrow pointing', 'red button', 'navigation arrow', 'ui element'
     ];
 
-    // グローバル登録
     if (typeof window !== 'undefined') {
       window.imageService = this;
     }
@@ -29,9 +27,9 @@ class ImageService {
     try {
       console.log('🔍 画像検索開始:', keyword);
       
-      // 🆕 動的翻訳システムを使用
-      const enhancedKeyword = await this.translateKeyword(keyword, options.type);
-      console.log('✨ 変換後キーワード:', enhancedKeyword);
+      // キーワード処理（二重翻訳回避）
+      const enhancedKeyword = await this.processKeyword(keyword, options.type);
+      console.log('✨ キーワード処理結果:', enhancedKeyword);
       
       if (!this.apiKey) {
         return this.createPlaceholder(keyword);
@@ -62,23 +60,42 @@ class ImageService {
     }
   }
 
-  // 🆕 動的翻訳システム統合
-  async translateKeyword(keyword, type) {
-    console.log('🔄 キーワード変換開始:', keyword);
+  // キーワード処理（二重翻訳回避）
+  async processKeyword(keyword, type) {
+    console.log('🔄 キーワード処理開始:', keyword);
     
-    // 🚫 YouTube関連NGキーワードの処理
+    // YouTube関連NGキーワードの処理
     if (keyword.includes('youtube') || keyword.includes('subscribe')) {
-      return 'thumbs up positive feedback like';
+      return 'thumbs up positive';
     }
     
-    // 🆕 translationService を使用して動的翻訳
+    // 英語の場合は翻訳せずにそのまま使用（二重翻訳回避）
+    const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
+    if (!hasJapanese) {
+      console.log('📝 英語キーワードそのまま使用:', keyword);
+      return this.shortenForSearch(keyword);
+    }
+    
+    // 日本語の場合のみ翻訳
     const translated = await translationService.translateForImageSearch(keyword, {
-      type: type,
-      context: 'image_search'
+      type: type
     });
     
-    console.log('🌐 動的翻訳結果:', translated);
+    console.log('🌐 翻訳完了:', translated);
     return translated;
+  }
+
+  // 検索用キーワード短縮
+  shortenForSearch(keyword) {
+    if (!keyword) return 'lifestyle modern';
+    
+    // 3-4単語に制限
+    const words = keyword.split(' ').filter(word => word.length > 0);
+    if (words.length > 4) {
+      return words.slice(0, 4).join(' ');
+    }
+    
+    return keyword.trim();
   }
 
   // 関連画像一括取得
@@ -87,8 +104,20 @@ class ImageService {
       const count = options.count || 3;
       const results = [];
       
-      // 🆕 translationService を使用してバリエーション生成
-      const variations = await translationService.generateVariations(keyword, count);
+      // バリエーション生成（日本語の場合のみ）
+      const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
+      let variations;
+      
+      if (hasJapanese) {
+        variations = await translationService.generateVariations(keyword, count);
+      } else {
+        // 英語の場合は修飾語を追加
+        const modifiers = ['beautiful', 'modern', 'bright'];
+        variations = [keyword];
+        for (let i = 1; i < count; i++) {
+          variations.push(`${keyword} ${modifiers[i - 1]}`);
+        }
+      }
       
       for (let i = 0; i < variations.length; i++) {
         const image = await this.fetchMainImage(variations[i], {
@@ -174,28 +203,15 @@ class ImageService {
 
   // プレースホルダー画像生成
   createPlaceholder(keyword) {
-    const placeholders = {
-      '子育て': { bg: '#e8f4fd', text: '👪 家族のイメージ', color: '#1976d2' },
-      '育児': { bg: '#fff3e0', text: '🍼 育児のイメージ', color: '#f57c00' },
-      '節約': { bg: '#e8f5e8', text: '💰 節約のイメージ', color: '#388e3c' },
-      'default': { bg: '#f5f5f5', text: '🖼️ 関連画像', color: '#616161' }
-    };
-    
-    const style = Object.keys(placeholders).find(key => 
-      keyword.includes(key)
-    ) || 'default';
-    
-    const config = placeholders[style];
-    
     return {
       id: 'placeholder_' + Date.now() + '_' + Math.random(),
       url: null,
       isPlaceholder: true,
       keyword: keyword,
-      alt: config.text,
-      backgroundColor: config.bg,
-      textColor: config.color,
-      displayText: config.text
+      alt: '🖼️ 関連画像',
+      backgroundColor: '#f5f5f5',
+      textColor: '#616161',
+      displayText: '🖼️ 関連画像'
     };
   }
 
@@ -228,11 +244,6 @@ class ImageService {
   clearCache() {
     this.cache.clear();
     console.log('🗑️ ImageService キャッシュクリア');
-  }
-
-  // 翻訳統計取得
-  getTranslationStats() {
-    return translationService.getStats();
   }
 }
 

@@ -1,4 +1,4 @@
-// src/services/translation/translationService.js - 動的翻訳システム
+// src/services/translation/translationService.js - 修正版
 
 import openaiService from '../api/openai.js';
 
@@ -7,208 +7,121 @@ class TranslationService {
     this.cache = new Map();
     this.isEnabled = true;
     
-    console.log('🌐 翻訳サービス初期化完了');
+    console.log('🌐 動的翻訳サービス初期化完了');
   }
 
-  // メイン翻訳機能: 日本語→英語（画像検索特化）
-  async translateForImageSearch(japaneseText, context = {}) {
-    if (!japaneseText || typeof japaneseText !== 'string') {
-      console.warn('⚠️ 無効な翻訳テキスト:', japaneseText);
+  // メイン機能: 簡潔なキーワード生成
+  async translateForImageSearch(text, options = {}) {
+    console.log('🌐 動的翻訳開始:', text);
+    
+    if (!text || typeof text !== 'string') {
       return 'lifestyle modern';
     }
 
-    // 日本語が含まれていない場合はそのまま返す
-    const hasJapanese = /[ひらがなカタカナ漢字]/.test(japaneseText);
+    // 英語の場合はそのまま返す（二重翻訳回避）
+    const hasJapanese = /[ひらがなカタカナ漢字]/.test(text);
     if (!hasJapanese) {
-      console.log('📝 英語テキストそのまま使用:', japaneseText);
-      return japaneseText;
+      console.log('📝 英語テキストそのまま使用:', text);
+      return this.shortenKeyword(text);
     }
 
-    // キャッシュチェック
-    const cacheKey = `${japaneseText}_${context.type || 'general'}`;
+    const cacheKey = `${text}_${options.type || 'default'}`;
     if (this.cache.has(cacheKey)) {
-      console.log('📦 翻訳キャッシュヒット:', japaneseText.substring(0, 20));
       return this.cache.get(cacheKey);
     }
 
     try {
-      // OpenAI翻訳（画像検索特化）
-      const translated = await this.translateWithOpenAI(japaneseText, context);
+      // 修正されたプロンプト（簡潔なキーワード生成）
+      const response = await openaiService.createCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [{
+          role: 'user',
+          content: `日本語「${text}」を画像検索用の英語キーワード（3-4単語）に翻訳してください。
+
+条件:
+- リストや説明文ではなく、単一のキーワードのみ
+- 3-4単語の簡潔な英語
+- 写真として存在しそうな内容
+- YouTube、矢印、ロゴは避ける
+
+回答例: "family conversation children"`
+        }],
+        max_tokens: 30,
+        temperature: 0.3
+      });
+
+      let translated = response.choices[0].message.content.trim()
+        .replace(/^(キーワード:|Keywords?:|翻訳:|訳:)/i, '')
+        .replace(/^["「『]|["」』]$/g, '')
+        .replace(/\n.*$/g, '') // 最初の行のみ使用
+        .trim()
+        .toLowerCase();
       
-      // キャッシュに保存
+      // さらに短縮
+      translated = this.shortenKeyword(translated);
+      
       this.cache.set(cacheKey, translated);
       
-      console.log('✅ 翻訳完了:', {
-        original: japaneseText.substring(0, 30),
-        translated: translated
-      });
-      
+      console.log('✅ 動的翻訳完了:', translated);
       return translated;
 
     } catch (error) {
-      console.warn('⚠️ API翻訳失敗、簡易翻訳使用:', error.message);
-      return this.simpleTranslate(japaneseText, context);
+      console.warn('⚠️ 動的翻訳失敗:', error.message);
+      return this.getFallbackTranslation(text);
     }
   }
 
-  // OpenAI翻訳（画像検索特化プロンプト）
-  async translateWithOpenAI(text, context) {
-    const { type = 'general', slideIndex = 0, variation = 0 } = context;
+  // キーワード短縮処理
+  shortenKeyword(keyword) {
+    if (!keyword) return 'lifestyle modern';
     
-    let prompt = `以下の日本語文章を、Unsplash画像検索に最適な英語キーワードに変換してください。
-
-日本語文章: "${text}"
-`;
-
-    // コンテキスト別の指示追加
-    if (type === 'title') {
-      prompt += `
-用途: タイトル画像検索用
-要求: メインコンセプトを表す3-5単語の英語キーワード
-例: "happy family parenting children"`;
-    } else if (type === 'item') {
-      prompt += `
-用途: 項目説明画像検索用（バリエーション${variation + 1}）
-要求: 具体的な場面や概念を表す3-6単語の英語キーワード
-例: "parent child reading book together"`;
-    } else if (type === 'summary') {
-      prompt += `
-用途: まとめ画像検索用
-要求: ポジティブなフィードバックを表す3-5単語の英語キーワード
-例: "thumbs up positive feedback like"`;
+    // 長すぎる場合は最初の3-4単語のみ使用
+    const words = keyword.split(' ').filter(word => word.length > 0);
+    if (words.length > 4) {
+      return words.slice(0, 4).join(' ');
     }
-
-    prompt += `
-
-重要な条件:
-- 実際に撮影された写真として存在しそうなキーワード
-- 抽象的すぎない、視覚的に表現可能なもの
-- YouTube、矢印、ロゴ、アイコンは避ける
-- 人物、物品、風景、行動など具体的なもの
-
-英語キーワード:`;
-
-    const response = await openaiService.createCompletion({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 100,
-      temperature: 0.7
-    });
-
-    let result = response.choices[0].message.content.trim();
     
-    // クリーンアップ
-    result = this.cleanupTranslation(result);
-    
-    return result;
+    // 不要な文字を除去
+    return keyword
+      .replace(/[^\w\s]/g, ' ') // 記号除去
+      .replace(/\s+/g, ' ') // 連続スペース除去
+      .trim();
   }
 
-  // 翻訳結果のクリーンアップ
-  cleanupTranslation(text) {
-    return text
-      .replace(/^(英語キーワード:|キーワード:|Keywords?:)/i, '')
-      .replace(/^["「『]|["」』]$/g, '')
-      .trim()
-      .toLowerCase();
-  }
-
-  // 簡易翻訳（フォールバック用）
-  simpleTranslate(text, context = {}) {
-    const { type = 'general' } = context;
+  // バリエーション生成（簡潔版）
+  async generateVariations(text, count = 3) {
+    const base = await this.translateForImageSearch(text);
+    const variations = [base];
     
-    // 基本的な単語置換マップ
-    const basicMap = {
-      '子育て': 'parenting',
-      '育児': 'childcare',
-      '子供': 'children',
-      '家族': 'family',
-      'コミュニケーション': 'communication',
-      '信頼関係': 'trust',
-      '日々': 'daily',
-      '会話': 'conversation',
-      '気持ち': 'feelings',
-      '大切': 'important',
-      '築く': 'building',
-      '寄り添う': 'understanding',
-      'ルーティン': 'routine',
-      'ポジティブ': 'positive',
-      '強化': 'reinforcement',
-      '行動': 'behavior'
-    };
-
-    // 単語を抽出して翻訳
-    const translatedWords = [];
-    Object.keys(basicMap).forEach(japanese => {
-      if (text.includes(japanese)) {
-        translatedWords.push(basicMap[japanese]);
-      }
-    });
-
-    if (translatedWords.length === 0) {
-      // 翻訳できない場合のフォールバック
-      switch (type) {
-        case 'title':
-          return 'family lifestyle beautiful';
-        case 'item':
-          return 'lifestyle modern bright';
-        case 'summary':
-          return 'thumbs up positive feedback';
-        default:
-          return 'lifestyle concept modern';
-      }
-    }
-
-    // タイプ別の修飾語追加
-    const result = translatedWords.join(' ');
-    switch (type) {
-      case 'title':
-        return result + ' lifestyle beautiful';
-      case 'item':
-        return result + ' modern bright';
-      case 'summary':
-        return 'thumbs up positive ' + result;
-      default:
-        return result + ' modern';
-    }
-  }
-
-  // バリエーション生成
-  async generateVariations(baseText, count = 3) {
-    const variations = [];
-    
-    for (let i = 0; i < count; i++) {
-      const context = {
-        type: 'item',
-        variation: i,
-        focus: i === 0 ? 'main' : i === 1 ? 'action' : 'environment'
-      };
-      
-      const variation = await this.translateForImageSearch(baseText, context);
-      variations.push(variation);
+    const modifiers = ['beautiful', 'modern', 'bright'];
+    for (let i = 1; i < count && i < modifiers.length + 1; i++) {
+      const modified = `${base} ${modifiers[i - 1]}`;
+      variations.push(this.shortenKeyword(modified));
     }
     
     return variations;
   }
 
-  // 翻訳統計取得
+  // フォールバック翻訳（簡潔版）
+  getFallbackTranslation(text) {
+    if (text.includes('子育て') || text.includes('育児')) return 'parenting children';
+    if (text.includes('いいね') || text.includes('登録')) return 'thumbs up positive';
+    if (text.includes('コミュニケーション') || text.includes('会話')) return 'family conversation';
+    if (text.includes('ルーティン') || text.includes('習慣')) return 'daily routine';
+    if (text.includes('ポジティブ') || text.includes('褒める')) return 'positive encouragement';
+    return 'lifestyle modern';
+  }
+
+  // 統計取得
   getStats() {
     return {
       cacheSize: this.cache.size,
-      isEnabled: this.isEnabled,
-      recentTranslations: Array.from(this.cache.keys()).slice(-5)
+      isEnabled: this.isEnabled
     };
   }
 
-  // キャッシュクリア
   clearCache() {
     this.cache.clear();
-    console.log('🗑️ 翻訳キャッシュクリア');
-  }
-
-  // サービス有効/無効切り替え
-  setEnabled(enabled) {
-    this.isEnabled = enabled;
-    console.log(`🌐 翻訳サービス: ${enabled ? '有効' : '無効'}`);
   }
 }
 
