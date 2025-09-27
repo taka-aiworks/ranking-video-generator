@@ -1,4 +1,6 @@
-// src/services/media/imageService.js - 動的キーワード対応版
+// src/services/media/imageService.js - 動的翻訳統合版
+
+import translationService from '../translation/translationService.js';
 
 class ImageService {
   constructor() {
@@ -27,8 +29,8 @@ class ImageService {
     try {
       console.log('🔍 画像検索開始:', keyword);
       
-      // 🆕 動的キーワード変換（固定マッピング削除）
-      const enhancedKeyword = this.dynamicTranslateKeyword(keyword, options.type);
+      // 🆕 動的翻訳システムを使用
+      const enhancedKeyword = await this.translateKeyword(keyword, options.type);
       console.log('✨ 変換後キーワード:', enhancedKeyword);
       
       if (!this.apiKey) {
@@ -60,62 +62,23 @@ class ImageService {
     }
   }
 
-  // 🆕 動的キーワード変換（固定マッピング削除）
-  dynamicTranslateKeyword(keyword, type) {
-    // 日本語が含まれている場合の基本変換
-    const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
+  // 🆕 動的翻訳システム統合
+  async translateKeyword(keyword, type) {
+    console.log('🔄 キーワード変換開始:', keyword);
     
-    if (hasJapanese) {
-      // 基本的な日本語→英語変換
-      let englishKeyword = keyword;
-      
-      // コンテンツ内容に基づく動的変換
-      if (keyword.includes('コミュニケーション') || keyword.includes('話') || keyword.includes('会話')) {
-        englishKeyword = 'family conversation talking together';
-      } else if (keyword.includes('遊び') || keyword.includes('ゲーム') || keyword.includes('活動')) {
-        englishKeyword = 'children playing games activities fun';
-      } else if (keyword.includes('学習') || keyword.includes('勉強') || keyword.includes('教育')) {
-        englishKeyword = 'learning education knowledge books';
-      } else if (keyword.includes('ルーティン') || keyword.includes('習慣') || keyword.includes('日課')) {
-        englishKeyword = 'daily routine schedule planning';
-      } else if (keyword.includes('褒める') || keyword.includes('ポジティブ') || keyword.includes('励ます')) {
-        englishKeyword = 'praise encouragement positive parenting';
-      } else if (keyword.includes('成長') || keyword.includes('発達')) {
-        englishKeyword = 'child development growth progress';
-      } else if (keyword.includes('健康') || keyword.includes('運動') || keyword.includes('体')) {
-        englishKeyword = 'healthy lifestyle fitness wellness';
-      } else if (keyword.includes('料理') || keyword.includes('食事') || keyword.includes('キッチン')) {
-        englishKeyword = 'cooking food kitchen family meal';
-      } else if (keyword.includes('読書') || keyword.includes('本') || keyword.includes('読み聞かせ')) {
-        englishKeyword = 'reading books parent child story';
-      } else if (keyword.includes('外出') || keyword.includes('公園') || keyword.includes('散歩')) {
-        englishKeyword = 'outdoor family park walking nature';
-      } else if (keyword.includes('子育て') || keyword.includes('育児') || keyword.includes('親子')) {
-        englishKeyword = 'parenting family children happy';
-      } else if (keyword.includes('youtube') || keyword.includes('チャンネル登録') || keyword.includes('いいね')) {
-        englishKeyword = 'thumbs up positive feedback like';
-      } else {
-        // 汎用的な変換
-        englishKeyword = 'family lifestyle children happy';
-      }
-      
-      return englishKeyword;
-    }
-    
-    // 英語キーワードの場合、そのまま使用
+    // 🚫 YouTube関連NGキーワードの処理
     if (keyword.includes('youtube') || keyword.includes('subscribe')) {
       return 'thumbs up positive feedback like';
     }
     
-    // タイプ別の調整
-    if (type === 'title') {
-      return keyword + ' lifestyle beautiful';
-    }
-    if (type === 'summary') {
-      return 'thumbs up like positive feedback';
-    }
+    // 🆕 translationService を使用して動的翻訳
+    const translated = await translationService.translateForImageSearch(keyword, {
+      type: type,
+      context: 'image_search'
+    });
     
-    return keyword;
+    console.log('🌐 動的翻訳結果:', translated);
+    return translated;
   }
 
   // 関連画像一括取得
@@ -124,9 +87,10 @@ class ImageService {
       const count = options.count || 3;
       const results = [];
       
-      const variations = this.generateKeywordVariations(keyword);
+      // 🆕 translationService を使用してバリエーション生成
+      const variations = await translationService.generateVariations(keyword, count);
       
-      for (let i = 0; i < Math.min(variations.length, count); i++) {
+      for (let i = 0; i < variations.length; i++) {
         const image = await this.fetchMainImage(variations[i], {
           ...options,
           type: 'variation_' + i
@@ -142,27 +106,6 @@ class ImageService {
       console.error('🚨 関連画像取得エラー:', error);
       return [this.createPlaceholder(keyword)];
     }
-  }
-
-  // キーワードバリエーション生成
-  generateKeywordVariations(baseKeyword) {
-    const variations = [baseKeyword];
-    
-    const enhanced = this.dynamicTranslateKeyword(baseKeyword);
-    if (enhanced !== baseKeyword) {
-      variations.push(enhanced);
-    }
-    
-    // 動的バリエーション追加
-    if (baseKeyword.includes('family') || baseKeyword.includes('children')) {
-      variations.push(baseKeyword + ' lifestyle modern');
-      variations.push(baseKeyword + ' bright natural light');
-    } else {
-      variations.push(baseKeyword + ' professional clean');
-      variations.push(baseKeyword + ' minimalist design');
-    }
-    
-    return variations.slice(0, 3);
   }
 
   // 最適画像選択（NGキーワードフィルター）
@@ -232,9 +175,9 @@ class ImageService {
   // プレースホルダー画像生成
   createPlaceholder(keyword) {
     const placeholders = {
-      'family': { bg: '#e8f4fd', text: '👪 家族のイメージ', color: '#1976d2' },
-      'children': { bg: '#fff3e0', text: '🧒 子供のイメージ', color: '#f57c00' },
-      'learning': { bg: '#e8f5e8', text: '📚 学習のイメージ', color: '#388e3c' },
+      '子育て': { bg: '#e8f4fd', text: '👪 家族のイメージ', color: '#1976d2' },
+      '育児': { bg: '#fff3e0', text: '🍼 育児のイメージ', color: '#f57c00' },
+      '節約': { bg: '#e8f5e8', text: '💰 節約のイメージ', color: '#388e3c' },
       'default': { bg: '#f5f5f5', text: '🖼️ 関連画像', color: '#616161' }
     };
     
@@ -285,6 +228,11 @@ class ImageService {
   clearCache() {
     this.cache.clear();
     console.log('🗑️ ImageService キャッシュクリア');
+  }
+
+  // 翻訳統計取得
+  getTranslationStats() {
+    return translationService.getStats();
   }
 }
 
