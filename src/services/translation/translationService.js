@@ -1,4 +1,4 @@
-// src/services/translation/translationService.js - 修正版
+// src/services/translation/translationService.js - 日本語判定修正版
 
 import openaiService from '../api/openai.js';
 
@@ -14,12 +14,20 @@ class TranslationService {
   async translateForImageSearch(text, options = {}) {
     console.log('🌐 動的翻訳開始:', text);
     
-    if (!text || typeof text !== 'string') {
-      return 'lifestyle modern';
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      console.log('⚠️ 空テキスト - フォールバック使用');
+      return this.getFallbackTranslation('');
     }
 
+    // 🚨 修正：正しい日本語判定（Unicode範囲）
+    const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text);
+    console.log('🔍 日本語判定:', {
+      text: text,
+      hasJapanese: hasJapanese,
+      textLength: text.length
+    });
+
     // 英語の場合はそのまま返す（二重翻訳回避）
-    const hasJapanese = /[ひらがなカタカナ漢字]/.test(text);
     if (!hasJapanese) {
       console.log('📝 英語テキストそのまま使用:', text);
       return this.shortenKeyword(text);
@@ -27,10 +35,13 @@ class TranslationService {
 
     const cacheKey = `${text}_${options.type || 'default'}`;
     if (this.cache.has(cacheKey)) {
+      console.log('📋 キャッシュから取得:', this.cache.get(cacheKey));
       return this.cache.get(cacheKey);
     }
 
     try {
+      console.log('🤖 OpenAI翻訳開始:', text);
+      
       // 修正されたプロンプト（簡潔なキーワード生成）
       const response = await openaiService.createCompletion({
         model: 'gpt-3.5-turbo',
@@ -46,7 +57,7 @@ class TranslationService {
 
 回答例: "family conversation children"`
         }],
-        max_tokens: 30,
+        max_tokens: 50,
         temperature: 0.3
       });
 
@@ -59,6 +70,12 @@ class TranslationService {
       
       // さらに短縮
       translated = this.shortenKeyword(translated);
+      
+      // 空文字チェック
+      if (!translated || translated.trim().length === 0) {
+        console.warn('⚠️ 翻訳結果が空文字 - フォールバック使用');
+        translated = this.getFallbackTranslation(text);
+      }
       
       this.cache.set(cacheKey, translated);
       
@@ -73,7 +90,9 @@ class TranslationService {
 
   // キーワード短縮処理
   shortenKeyword(keyword) {
-    if (!keyword) return 'lifestyle modern';
+    if (!keyword || keyword.trim().length === 0) {
+      return 'lifestyle modern';
+    }
     
     // 長すぎる場合は最初の3-4単語のみ使用
     const words = keyword.split(' ').filter(word => word.length > 0);
@@ -82,10 +101,12 @@ class TranslationService {
     }
     
     // 不要な文字を除去
-    return keyword
+    const cleaned = keyword
       .replace(/[^\w\s]/g, ' ') // 記号除去
       .replace(/\s+/g, ' ') // 連続スペース除去
       .trim();
+    
+    return cleaned || 'lifestyle modern';
   }
 
   // バリエーション生成（簡潔版）
@@ -102,14 +123,40 @@ class TranslationService {
     return variations;
   }
 
-  // フォールバック翻訳（簡潔版）
+  // 🚨 修正：フォールバック翻訳の強化
   getFallbackTranslation(text) {
-    if (text.includes('子育て') || text.includes('育児')) return 'parenting children';
-    if (text.includes('いいね') || text.includes('登録')) return 'thumbs up positive';
-    if (text.includes('コミュニケーション') || text.includes('会話')) return 'family conversation';
-    if (text.includes('ルーティン') || text.includes('習慣')) return 'daily routine';
-    if (text.includes('ポジティブ') || text.includes('褒める')) return 'positive encouragement';
-    return 'lifestyle modern';
+    // 空文字の場合
+    if (!text || text.trim().length === 0) {
+      return 'lifestyle modern clean';
+    }
+    
+    // 子育て関連
+    if (text.includes('子育て') || text.includes('育児') || text.includes('子供')) {
+      return 'parenting children family';
+    }
+    
+    // コミュニケーション関連
+    if (text.includes('コミュニケーション') || text.includes('会話') || text.includes('話')) {
+      return 'family conversation talking';
+    }
+    
+    // ルーティン・習慣関連
+    if (text.includes('ルーティン') || text.includes('習慣') || text.includes('日常')) {
+      return 'daily routine lifestyle';
+    }
+    
+    // ポジティブ関連
+    if (text.includes('ポジティブ') || text.includes('褒める') || text.includes('強化')) {
+      return 'positive encouragement support';
+    }
+    
+    // いいね・登録関連
+    if (text.includes('いいね') || text.includes('登録') || text.includes('チャンネル')) {
+      return 'thumbs up positive feedback';
+    }
+    
+    // デフォルト
+    return 'lifestyle modern beautiful';
   }
 
   // 統計取得
