@@ -1,6 +1,7 @@
 // src/services/media/imageService.js - 二重翻訳回避版
 
 import translationService from '../translation/translationService.js';
+import imageConfig from '../../config/imageConfig.js';
 
 class ImageService {
   constructor() {
@@ -185,13 +186,26 @@ class ImageService {
     return data.results || [];
   }
 
-  // 画像データ整形
+  // 画像データ整形（高解像度URLを優先）
   formatImageData(imageData, keyword) {
     if (!imageData) return null;
     
+    const targetWidth = imageConfig.video?.targetWidth || 1920;
+    const targetHeight = imageConfig.video?.targetHeight || 1080;
+
+    // Unsplash raw にクエリを付与して高解像度かつ圧縮品質を指定
+    const raw = imageData.urls?.raw;
+    const full = imageData.urls?.full;
+    const regular = imageData.urls?.regular;
+
+    // raw があれば最優先でパラメータ制御
+    const bestUrl = raw
+      ? `${raw}&w=${targetWidth}&h=${targetHeight}&fit=max&q=90&fm=webp&auto=format`
+      : (full || regular || imageData.urls?.small);
+
     return {
       id: imageData.id,
-      url: imageData.urls.regular || imageData.urls.small,
+      url: bestUrl,
       thumbnailUrl: imageData.urls.thumb || imageData.urls.small,
       alt: imageData.alt_description || keyword,
       description: imageData.description,

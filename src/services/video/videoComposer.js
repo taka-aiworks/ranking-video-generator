@@ -27,10 +27,35 @@ class VideoComposer {
     return this.canvas;
   }
 
-  // シンプルな録画開始
-  startRecording(duration) {
-    const stream = this.canvas.captureStream(30);
-    this.recorder = new MediaRecorder(stream);
+  // 高品質録画開始（ビットレート/コーデック/フレームレート指定）
+  startRecording(duration, options = {}) {
+    const {
+      fps = 60,
+      videoBitsPerSecond = 12000000, // 12 Mbps
+      mimeTypePreferred = 'video/webm;codecs=vp9'
+    } = options;
+
+    const stream = this.canvas.captureStream(fps);
+
+    // 使用可能な mimeType を選択
+    let mimeType = mimeTypePreferred;
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+      if (!MediaRecorder.isTypeSupported(mimeTypePreferred)) {
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+          mimeType = 'video/webm;codecs=vp8';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+          mimeType = 'video/webm';
+        } else {
+          mimeType = '';
+        }
+      }
+    }
+
+    const recorderOptions = mimeType
+      ? { mimeType, videoBitsPerSecond }
+      : { videoBitsPerSecond };
+
+    this.recorder = new MediaRecorder(stream, recorderOptions);
     
     const chunks = [];
     this.recorder.ondataavailable = e => {
@@ -40,7 +65,11 @@ class VideoComposer {
       }
     };
     
-    console.log('🔴 録画開始...', duration/1000 + 's');
+    console.log('🔴 録画開始...', duration/1000 + 's', {
+      fps,
+      videoBitsPerSecond,
+      mimeType: recorderOptions.mimeType || 'default'
+    });
     
     return new Promise((resolve, reject) => {
       this.recorder.onstop = () => {
@@ -104,7 +133,13 @@ class VideoComposer {
       console.log('✅ MediaRecorder開始完了');
       
       let currentSlideIndex = 0;
-      const totalSlides = 1 + (videoDesign.items.length * 3) + 1;
+      const itemSlides = videoDesign.items.length * 3;
+      const totalSlides = 1 + itemSlides + 1;
+      // 時間配分: タイトル/まとめは固定、残りをアイテムサブスライドに均等配分
+      const titleMs = 3000;
+      const summaryMs = 5000;
+      const remainingMs = Math.max(0, totalDuration - titleMs - summaryMs);
+      const perItemSlideMs = itemSlides > 0 ? Math.max(2200, Math.floor(remainingMs / itemSlides)) : 0;
       
       console.log('📋 スライド計画:', totalSlides + 'スライド予定');
       
@@ -113,7 +148,7 @@ class VideoComposer {
       const titleImage = this.getSlideImage(slideImages, currentSlideIndex);
       this.renderTitleSlide(videoDesign, titleImage);
       
-      await this.sleep(3000);
+      await this.sleep(titleMs);
       currentSlideIndex++;
 
       // 各項目のスライド
@@ -127,7 +162,7 @@ class VideoComposer {
           
           this.renderItemSlide(item, i + 1, j, itemImage);
           
-          await this.sleep(4000);
+          await this.sleep(perItemSlideMs);
           currentSlideIndex++;
           
           if (onProgress) {
@@ -143,7 +178,7 @@ class VideoComposer {
       const summaryImage = this.getSlideImage(slideImages, currentSlideIndex);
       this.renderSummarySlide(videoDesign, summaryImage);
       
-      await this.sleep(5000);
+      await this.sleep(summaryMs);
       
       console.log('🏁 全スライド描画完了、録画停止待機');
       const videoData = await recording;
@@ -258,14 +293,18 @@ class VideoComposer {
     const centerX = this.canvas.width / 2;
     const centerY = this.canvas.height / 2;
     
-    // タイトル
-    this.drawLargeText(
+    // タイトル（自動折り返し）
+    const titleMaxWidth = Math.floor(this.canvas.width * 0.85);
+    const titleMaxHeight = Math.floor(this.canvas.height * 0.25);
+    this.drawWrappedText(
       videoDesign.title || 'タイトル',
       centerX,
       centerY - 200,
       70,
       '#212529',
-      { bold: true }
+      { bold: true },
+      titleMaxWidth,
+      titleMaxHeight
     );
     
     // 画像描画
@@ -299,9 +338,10 @@ class VideoComposer {
     const imageY = this.canvas.height / 2;
     const imageWidth = this.canvas.width * 0.8;
     const imageHeight = this.canvas.height / 2;
+    const textMaxWidth = Math.floor(this.canvas.width * 0.85);
     
     if (subSlideIndex === 0) {
-      this.drawLargeText(itemTitle, centerX, textAreaHeight * 0.5, 60, '#000000', { bold: true });
+      this.drawWrappedText(itemTitle, centerX, textAreaHeight * 0.5, 60, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.6));
       if (slideImage?.optimized?.canvas) {
         console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 50, imageWidth, imageHeight - 100);
@@ -310,8 +350,8 @@ class VideoComposer {
         this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, `${itemTitle}のイメージ`);
       }
     } else if (subSlideIndex === 1 && mainContent) {
-      this.drawLargeText(itemTitle, centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true });
-      this.drawLargeText(mainContent, centerX, textAreaHeight * 0.7, 40, '#000000');
+      this.drawWrappedText(itemTitle, centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.4));
+      this.drawWrappedText(mainContent, centerX, textAreaHeight * 0.7, 40, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.6));
       if (slideImage?.optimized?.canvas) {
         console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
@@ -320,8 +360,8 @@ class VideoComposer {
         this.drawImagePlaceholder(imageX, imageY + 30, imageWidth, imageHeight - 60, `${itemTitle}の具体例`);
       }
     } else if (subSlideIndex === 2 && details) {
-      this.drawLargeText('💡 ポイント', centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true });
-      this.drawLargeText(details, centerX, textAreaHeight * 0.7, 38, '#000000');
+      this.drawWrappedText('💡 ポイント', centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.35));
+      this.drawWrappedText(details, centerX, textAreaHeight * 0.7, 38, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.65));
       if (slideImage?.optimized?.canvas) {
         console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
@@ -339,13 +379,15 @@ class VideoComposer {
     const centerX = this.canvas.width / 2;
     const textAreaHeight = this.canvas.height / 2;
     
-    this.drawLargeText(
+    this.drawWrappedText(
       'この動画が役に立ったら\nグッドボタン👍\nチャンネル登録🔔\nお願いします！',
       centerX,
       textAreaHeight * 0.6,
       35,
       '#000000',
-      { bold: true }
+      { bold: true },
+      Math.floor(this.canvas.width * 0.8),
+      Math.floor(textAreaHeight * 0.8)
     );
     
     // まとめ画像
@@ -427,6 +469,72 @@ class VideoComposer {
       this.ctx.fillText(line, x, startY + (index * lineHeight));
     });
     
+    this.ctx.restore();
+  }
+
+  // 折り返しテキスト描画（キャンバス幅に応じて自動改行/縮小）
+  drawWrappedText(text, x, y, fontSize = 32, color = '#000000', options = {}, maxWidth, maxHeight) {
+    this.ctx.save();
+    const weight = options.bold ? 'bold' : 'normal';
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+
+    const minFontSize = Math.max(16, Math.floor(fontSize * 0.6));
+    let currentFontSize = fontSize;
+    let lines = [];
+    let lineHeight;
+
+    // 改行を一旦保持しつつ各段落ごとにラップ
+    const paragraphs = (text || '').toString().split('\n');
+
+    const wrapWithFont = (size) => {
+      this.ctx.font = `${weight} ${size}px Arial`;
+      const computedLines = [];
+      const space = ' ';
+      paragraphs.forEach(p => {
+        const lineBuffer = [];
+        // 日本語対策: スペースがない場合は1文字ずつ扱う
+        const hasSpace = p.includes(space);
+        const tokens = hasSpace ? p.split(space) : p.split('');
+        let currentLine = '';
+        tokens.forEach((token, idx) => {
+          const fragment = hasSpace ? (currentLine ? currentLine + space + token : token) : (currentLine + token);
+          const width = this.ctx.measureText(fragment).width;
+          if (maxWidth && width > maxWidth && currentLine) {
+            lineBuffer.push(currentLine);
+            currentLine = hasSpace ? token : token; // token自体を次行に
+          } else {
+            currentLine = fragment;
+          }
+        });
+        if (currentLine) lineBuffer.push(currentLine);
+        // 空行も尊重
+        if (lineBuffer.length === 0) lineBuffer.push('');
+        computedLines.push(...lineBuffer);
+      });
+      return computedLines;
+    };
+
+    while (currentFontSize >= minFontSize) {
+      lines = wrapWithFont(currentFontSize);
+      lineHeight = currentFontSize * 1.2;
+      const totalHeight = lines.length * lineHeight;
+      if (!maxHeight || totalHeight <= maxHeight) {
+        break;
+      }
+      currentFontSize -= 2;
+    }
+
+    // 最終描画
+    this.ctx.font = `${weight} ${currentFontSize}px Arial`;
+    lineHeight = currentFontSize * 1.2;
+    const totalHeight = lines.length * lineHeight;
+    const startY = y - (totalHeight / 2) + (lineHeight / 2);
+    lines.forEach((line, index) => {
+      this.ctx.fillText(line, x, startY + (index * lineHeight));
+    });
+
     this.ctx.restore();
   }
 

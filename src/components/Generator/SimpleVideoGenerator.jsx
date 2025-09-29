@@ -78,7 +78,7 @@ const SimpleVideoGenerator = () => {
     }
   }, [generatedScript]);
 
-  // === 🚨 修正版：AI動画生成（画像統合版） ===
+  // === ステップ1：内容（スクリプト）生成 ===
   const handleGenerate = useCallback(async () => {
     if (!keyword.trim()) {
       setError('キーワードを入力してください');
@@ -88,7 +88,7 @@ const SimpleVideoGenerator = () => {
     setIsGenerating(true);
     setError(null);
     setProgress(0);
-    setTab('generating');
+    // スクリプト生成中はタブ遷移しない（動画生成と誤認させない）
     setGeneratedScript(null);
 
     try {
@@ -100,54 +100,57 @@ const SimpleVideoGenerator = () => {
 
       const videoDesign = await openaiService.generateVideoDesign(keyword, 'auto', format, optimalDuration);
       setGeneratedScript(videoDesign);
+      setStatus('📝 AI設計図完成！編集してから動画生成できます');
+      setProgress(100);
       setTab('script');
-      setStatus('📝 AI設計図完成！');
-      setProgress(25);
 
-      // 🆕 画像統合（有効な場合のみ）
-      let enhancedVideoDesign = videoDesign;
+    } catch (err) {
+      console.error('AI動画生成エラー:', err);
+      setError('AI動画生成でエラーが発生しました: ' + err.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [keyword, format, integrateImages, isIntegrationEnabled]);
 
+  // === ステップ2：動画生成（確定したスクリプトから） ===
+  const handleGenerateVideo = useCallback(async () => {
+    try {
+      setIsGenerating(true);
+      setProgress(0);
+      setStatus('🖼️ 素材準備中...');
+      setTab('generating');
+
+      // 編集済みがあればそれを使用
+      const baseDesign = (isEditingScript && editableScript) ? editableScript : generatedScript;
+      if (!baseDesign) {
+        setError('先にスクリプトを生成してください');
+        setTab('input');
+        return;
+      }
+
+      const optimalDuration = baseDesign.duration || contentAnalyzer.calculateOptimalDuration(keyword, 'auto', format);
+
+      // 画像統合
+      let enhancedVideoDesign = baseDesign;
       if (isIntegrationEnabled) {
-        setStatus('🖼️ 関連画像を自動取得中...');
-        setProgress(35);
-        
+        setProgress(20);
         try {
-          enhancedVideoDesign = await integrateImages(videoDesign);
-          
-          // 🚨 修正：slideImages配列の検証ログ
-          if (enhancedVideoDesign.slideImages) {
-            console.log('✅ slideImages統合完了:', {
-              type: typeof enhancedVideoDesign.slideImages,
-              isArray: Array.isArray(enhancedVideoDesign.slideImages),
-              keys: Object.keys(enhancedVideoDesign.slideImages),
-              count: Object.keys(enhancedVideoDesign.slideImages).length,
-              sample: enhancedVideoDesign.slideImages[0] || enhancedVideoDesign.slideImages['0']
-            });
-          }
-          
-          setStatus('✅ 画像統合完了！');
-          setProgress(50);
+          enhancedVideoDesign = await integrateImages(baseDesign);
+          setProgress(45);
         } catch (imgError) {
           console.warn('⚠️ 画像統合エラー:', imgError);
           setStatus('⚠️ 画像取得失敗 - プレースホルダーで生成');
         }
       }
-      
+
+      // Canvas初期化
       videoComposer.initCanvas(canvasRef, enhancedVideoDesign);
       setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
       setProgress(55);
-      
-      // 🚨 修正：オブジェクト形式でslideImagesを渡す
-      console.log('🎬 動画生成開始:', {
-        hasSlideImages: !!enhancedVideoDesign.slideImages,
-        slideImagesType: typeof enhancedVideoDesign.slideImages,
-        slideImagesKeys: enhancedVideoDesign.slideImages ? Object.keys(enhancedVideoDesign.slideImages) : [],
-        isIntegrationEnabled: isIntegrationEnabled
-      });
 
       const generatedVideo = await videoComposer.generateVideoWithImages(
         enhancedVideoDesign,
-        enhancedVideoDesign.slideImages || {}, // 🚨 修正：オブジェクト形式で渡す（配列変換しない）
+        enhancedVideoDesign.slideImages || {},
         (videoProgress) => setProgress(55 + (videoProgress * 0.4))
       );
 
@@ -167,15 +170,15 @@ const SimpleVideoGenerator = () => {
       setStatus('✅ AI動画生成完了！');
       setProgress(100);
       setVideo(result);
-      setTimeout(() => setTab('result'), 1500);
-
+      setTimeout(() => setTab('result'), 800);
     } catch (err) {
-      console.error('AI動画生成エラー:', err);
-      setError('AI動画生成でエラーが発生しました: ' + err.message);
+      console.error('動画生成エラー:', err);
+      setError('動画生成でエラーが発生しました: ' + err.message);
+      setTab('script');
     } finally {
       setIsGenerating(false);
     }
-  }, [keyword, format, integrateImages, isIntegrationEnabled]);
+  }, [isEditingScript, editableScript, generatedScript, integrateImages, isIntegrationEnabled, format, keyword]);
 
   // === ダウンロード ===
   const downloadVideo = useCallback((videoData, filename) => {
@@ -231,7 +234,7 @@ const SimpleVideoGenerator = () => {
           {[
             { id: 'input', name: '入力', icon: Zap },
             { id: 'script', name: 'スクリプト確認', icon: Edit3 },
-            { id: 'generating', name: '生成中', icon: Video },
+            { id: 'generating', name: '動画生成中', icon: Video },
             { id: 'result', name: '完成', icon: CheckCircle }
           ].map(t => (
             <button
@@ -401,13 +404,12 @@ const SimpleVideoGenerator = () => {
             {/* 生成ボタン */}
             <button
               onClick={handleGenerate}
-              disabled={!keyword || isGenerating || isImageLoading}
+              disabled={!keyword || isGenerating}
               className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 disabled:opacity-50 text-black font-bold py-6 rounded-xl text-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:scale-100"
             >
               <Zap className="w-6 h-6" />
               <span>
-                {isImageLoading ? '🖼️ 画像準備中...' : '🤖 AIに動画を作ってもらう'}
-                {isIntegrationEnabled ? ' (画像付き)' : ''}
+                {isGenerating ? '🧠 設計作成中...' : '🧠 設計図を作成する'}
               </span>
             </button>
           </div>
@@ -446,6 +448,13 @@ const SimpleVideoGenerator = () => {
                         <span>保存</span>
                       </button>
                     )}
+                    <button
+                      onClick={handleGenerateVideo}
+                      disabled={isGenerating}
+                      className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 px-4 py-2 rounded-lg font-bold"
+                    >
+                      🎬 動画を生成
+                    </button>
                   </div>
                 </div>
 

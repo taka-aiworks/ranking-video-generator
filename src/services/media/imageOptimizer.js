@@ -59,6 +59,10 @@ class ImageOptimizer {
       this.tempCtx.fillStyle = '#ffffff';
       this.tempCtx.fillRect(0, 0, dimensions.width, dimensions.height);
 
+      // 高品質補間設定（ブラウザによっては無視されるが指定しておく）
+      this.tempCtx.imageSmoothingEnabled = true;
+      this.tempCtx.imageSmoothingQuality = 'high';
+
       // 画像描画
       this.tempCtx.drawImage(
         imageElement,
@@ -69,9 +73,16 @@ class ImageOptimizer {
       );
 
       // 最適化された画像データを返す
+      // 注意: tempCanvas は共有されるため、ここでクローンを作成して返す
+      const resultCanvas = document.createElement('canvas');
+      resultCanvas.width = this.tempCanvas.width;
+      resultCanvas.height = this.tempCanvas.height;
+      const resultCtx = resultCanvas.getContext('2d');
+      resultCtx.drawImage(this.tempCanvas, 0, 0);
+
       return {
-        canvas: this.tempCanvas,
-        dataUrl: this.tempCanvas.toDataURL('image/jpeg', imageConfig.video.imageQuality),
+        canvas: resultCanvas,
+        dataUrl: resultCanvas.toDataURL('image/webp', 0.95),
         width: dimensions.width,
         height: dimensions.height,
         layout: targetLayout,
