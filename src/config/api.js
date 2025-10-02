@@ -4,6 +4,7 @@
 console.log('🔍 環境変数デバッグ情報:');
 console.log('- import.meta.env:', import.meta.env);
 console.log('- VITE_OPENAI_API_KEY:', import.meta.env.VITE_OPENAI_API_KEY ? '設定済み' : '❌未設定');
+console.log('- VITE_UNSPLASH_ACCESS_KEY:', import.meta.env.VITE_UNSPLASH_ACCESS_KEY ? '設定済み' : '❌未設定');
 console.log('- .env読み込み状況:', import.meta.env.VITE_OPENAI_API_KEY ? '✅正常' : '❌失敗');
 
 // 環境変数管理（フォールバックなし）
@@ -11,7 +12,8 @@ export const ENV = {
   isDevelopment: import.meta.env.DEV,
   mode: import.meta.env.MODE || 'development',
   openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || null,
-  amazonApiKey: import.meta.env.VITE_AMAZON_API_KEY || null
+  amazonApiKey: import.meta.env.VITE_AMAZON_API_KEY || null,
+  unsplashAccessKey: import.meta.env.VITE_UNSPLASH_ACCESS_KEY || null
 };
 
 // API設定
@@ -22,6 +24,10 @@ export const API_CONFIG = {
     maxTokens: 2500,
     temperature: 0.7,
     apiKey: ENV.openaiApiKey
+  },
+  unsplash: {
+    baseURL: 'https://api.unsplash.com',
+    apiKey: ENV.unsplashAccessKey
   },
   
   amazon: {

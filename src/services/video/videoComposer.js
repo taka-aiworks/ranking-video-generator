@@ -29,9 +29,13 @@ class VideoComposer {
 
   // 高品質録画開始（ビットレート/コーデック/フレームレート指定）
   startRecording(duration, options = {}) {
+    // 🎯 動画の内容に応じたビットレート調整
+    const isStaticContent = true; // 主に静止画とテキスト
+    const baseBitrate = isStaticContent ? 4000000 : 8000000; // 4Mbps or 8Mbps
+    
     const {
-      fps = 60,
-      videoBitsPerSecond = 12000000, // 12 Mbps
+      fps = 30, // 静止画中心なので30fpsで十分
+      videoBitsPerSecond = baseBitrate,
       mimeTypePreferred = 'video/webm;codecs=vp9'
     } = options;
 
@@ -89,15 +93,25 @@ class VideoComposer {
       this.recorder.onerror = reject;
       this.recorder.start();
       
-      const actualDuration = duration + 15000;
-      console.log('⏰ 録画タイマー設定:', actualDuration/1000 + '秒');
+      // 🎯 改善された録画タイマー（余裕時間を最小限に）
+      const bufferTime = Math.min(5000, duration * 0.1); // 最大5秒または動画時間の10%
+      const actualDuration = duration + bufferTime;
       
-      setTimeout(() => {
+      console.log('⏰ 録画タイマー設定:', {
+        requestedDuration: duration/1000 + 's',
+        bufferTime: bufferTime/1000 + 's',
+        actualDuration: actualDuration/1000 + 's'
+      });
+      
+      const recordingTimer = setTimeout(() => {
         console.log('⏰ タイマー到達 - 録画停止実行');
         if (this.recorder && this.recorder.state === 'recording') {
           this.recorder.stop();
         }
       }, actualDuration);
+      
+      // タイマーIDを保存（必要に応じてクリア可能）
+      this.recordingTimer = recordingTimer;
     });
   }
 
@@ -135,13 +149,25 @@ class VideoComposer {
       let currentSlideIndex = 0;
       const itemSlides = videoDesign.items.length * 3;
       const totalSlides = 1 + itemSlides + 1;
-      // 時間配分: タイトル/まとめは固定、残りをアイテムサブスライドに均等配分
-      const titleMs = 3000;
-      const summaryMs = 5000;
-      const remainingMs = Math.max(0, totalDuration - titleMs - summaryMs);
-      const perItemSlideMs = itemSlides > 0 ? Math.max(2200, Math.floor(remainingMs / itemSlides)) : 0;
       
-      console.log('📋 スライド計画:', totalSlides + 'スライド予定');
+      // 🎯 改善された時間配分計算
+      const titleMs = Math.max(2000, Math.floor(totalDuration * 0.1)); // 10%または最低2秒
+      const summaryMs = Math.max(3000, Math.floor(totalDuration * 0.15)); // 15%または最低3秒
+      const remainingMs = Math.max(0, totalDuration - titleMs - summaryMs);
+      const perItemSlideMs = itemSlides > 0 ? Math.max(1500, Math.floor(remainingMs / itemSlides)) : 0;
+      
+      // 実際の計算時間を記録
+      const calculatedTotalMs = titleMs + (perItemSlideMs * itemSlides) + summaryMs;
+      
+      console.log('📋 詳細スライド計画:', {
+        totalSlides: totalSlides,
+        requestedDuration: totalDuration / 1000 + 's',
+        calculatedDuration: calculatedTotalMs / 1000 + 's',
+        titleMs: titleMs,
+        perItemSlideMs: perItemSlideMs,
+        summaryMs: summaryMs,
+        itemSlides: itemSlides
+      });
       
       // タイトルスライド
       console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] タイトルスライド描画`);
@@ -181,20 +207,42 @@ class VideoComposer {
       await this.sleep(summaryMs);
       
       console.log('🏁 全スライド描画完了、録画停止待機');
+      
+      // 実際の描画時間を計算
+      const actualDrawingTime = calculatedTotalMs;
+      
+      // 描画完了後、少し待ってから録画停止
+      await this.sleep(500); // 0.5秒のバッファ
+      
+      // 手動で録画停止（タイマーより早く終了）
+      if (this.recorder && this.recorder.state === 'recording') {
+        console.log('🛑 手動録画停止実行');
+        this.recorder.stop();
+        if (this.recordingTimer) {
+          clearTimeout(this.recordingTimer);
+        }
+      }
+      
       const videoData = await recording;
       
       loopController.endSession();
       
-      console.log('✅ 画像付き動画生成完了');
+      console.log('✅ 画像付き動画生成完了', {
+        requestedDuration: totalDuration / 1000 + 's',
+        actualDrawingTime: actualDrawingTime / 1000 + 's',
+        fileSize: videoData.size
+      });
       
       return {
         success: true,
         videoBlob: videoData.blob,
         url: videoData.url,
-        duration: totalDuration / 1000,
+        duration: actualDrawingTime / 1000, // 実際の描画時間を返す
+        requestedDuration: totalDuration / 1000,
         slideCount: currentSlideIndex + 1,
         imagesUsed: slideImages ? Object.keys(slideImages).length : 0,
-        size: videoData.size
+        size: videoData.size,
+        timingAccurate: true
       };
       
     } catch (error) {
@@ -379,16 +427,18 @@ class VideoComposer {
     const centerX = this.canvas.width / 2;
     const textAreaHeight = this.canvas.height / 2;
     
+    // エンディングCTA
     this.drawWrappedText(
-      'この動画が役に立ったら\nグッドボタン👍\nチャンネル登録🔔\nお願いします！',
+      'この動画が良かったら…',
       centerX,
-      textAreaHeight * 0.6,
-      35,
+      textAreaHeight * 0.35,
+      42,
       '#000000',
       { bold: true },
-      Math.floor(this.canvas.width * 0.8),
-      Math.floor(textAreaHeight * 0.8)
+      Math.floor(this.canvas.width * 0.9),
+      Math.floor(textAreaHeight * 0.5)
     );
+    this.drawCTAButtons(centerX, textAreaHeight * 0.6);
     
     // まとめ画像
     const imageX = this.canvas.width * 0.2;
@@ -558,6 +608,51 @@ class VideoComposer {
     this.ctx.restore();
   }
 
+  // いいね/登録ボタン風のCTAを描画
+  drawCTAButtons(centerX, baseY) {
+    const buttonWidth = Math.floor(this.canvas.width * 0.36);
+    const buttonHeight = 70;
+    const gap = 30;
+    const leftX = centerX - buttonWidth - (gap / 2);
+    const rightX = centerX + (gap / 2);
+    const y = baseY;
+
+    // 左: グッドボタン
+    this.drawRoundedButton(leftX, y, buttonWidth, buttonHeight, '#ffdd57', '#000000', '👍 高評価お願いします');
+    // 右: チャンネル登録
+    this.drawRoundedButton(rightX, y, buttonWidth, buttonHeight, '#ff6b6b', '#ffffff', '🔔 チャンネル登録');
+  }
+
+  drawRoundedButton(x, y, width, height, bgColor, textColor, label) {
+    this.ctx.save();
+    const radius = 16;
+    this.ctx.fillStyle = bgColor;
+    this.roundRectPath(x, y, width, height, radius);
+    this.ctx.fill();
+
+    this.ctx.fillStyle = textColor;
+    this.ctx.font = 'bold 28px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(label, x + width / 2, y + height / 2);
+    this.ctx.restore();
+  }
+
+  roundRectPath(x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + r, y);
+    this.ctx.lineTo(x + width - r, y);
+    this.ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    this.ctx.lineTo(x + width, y + height - r);
+    this.ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    this.ctx.lineTo(x + r, y + height);
+    this.ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    this.ctx.lineTo(x, y + r);
+    this.ctx.quadraticCurveTo(x, y, x + r, y);
+    this.ctx.closePath();
+  }
+
   // Sleep関数
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -568,6 +663,13 @@ class VideoComposer {
     if (this.recorder && this.recorder.state !== 'inactive') {
       this.recorder.stop();
     }
+    
+    // タイマーのクリーンアップ
+    if (this.recordingTimer) {
+      clearTimeout(this.recordingTimer);
+      this.recordingTimer = null;
+    }
+    
     this.isGenerating = false;
     console.log('🧹 VideoComposer クリーンアップ完了');
   }

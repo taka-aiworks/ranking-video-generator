@@ -138,14 +138,14 @@ class ImageService {
     }
   }
 
-  // 最適画像選択（NGキーワードフィルター）
+  // 最適画像選択（NGキーワード＋品質フィルター）
   selectBestImage(images, originalKeyword) {
     if (!images || images.length === 0) return null;
     
     console.log('🔍 画像フィルタリング:', images.length + '件から選択');
     
     // NGキーワードを含む画像を除外
-    const filtered = images.filter(img => {
+    const keywordFiltered = images.filter(img => {
       const description = (img.description || '').toLowerCase();
       const altDescription = (img.alt_description || '').toLowerCase();
       
@@ -154,16 +154,86 @@ class ImageService {
       );
       
       if (hasNgKeyword) {
-        console.log('🚫 除外:', img.alt_description);
+        console.log('🚫 NGキーワード除外:', img.alt_description);
       }
       
       return !hasNgKeyword;
     });
     
-    const selected = filtered.length > 0 ? filtered[0] : images[0];
-    console.log('✅ 選択:', selected.alt_description || 'No description');
+    // 品質フィルター：最小解像度チェック
+    const qualityFiltered = keywordFiltered.filter(img => {
+      const width = img.width || 0;
+      const height = img.height || 0;
+      const pixels = width * height;
+      const minPixels = 640 * 480; // 最小解像度
+      
+      if (pixels < minPixels) {
+        console.log(`🚫 低解像度除外: ${width}x${height} (${img.alt_description})`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // 品質スコアで並び替え
+    const scoredImages = qualityFiltered.map(img => ({
+      ...img,
+      qualityScore: this.calculateImageQualityScore(img)
+    })).sort((a, b) => b.qualityScore - a.qualityScore);
+    
+    const selected = scoredImages.length > 0 ? scoredImages[0] : 
+                    (keywordFiltered.length > 0 ? keywordFiltered[0] : images[0]);
+    
+    console.log('✅ 選択:', selected.alt_description || 'No description', 
+                selected.qualityScore ? `(品質: ${selected.qualityScore})` : '');
     
     return selected;
+  }
+
+  // 画像品質スコア計算
+  calculateImageQualityScore(imageData) {
+    let score = 0;
+    
+    // 解像度スコア (0-40点)
+    const width = imageData.width || 0;
+    const height = imageData.height || 0;
+    const pixels = width * height;
+    
+    if (pixels >= 2073600) score += 40; // 1920x1080以上
+    else if (pixels >= 1382400) score += 35; // 1440x960以上
+    else if (pixels >= 921600) score += 30; // 1280x720以上
+    else if (pixels >= 614400) score += 20; // 1024x600以上
+    else if (pixels >= 307200) score += 10; // 640x480以上
+    
+    // アスペクト比スコア (0-20点)
+    const aspectRatio = width / height;
+    const targetAspectRatio = 16 / 9; // 1.78
+    const aspectDiff = Math.abs(aspectRatio - targetAspectRatio);
+    
+    if (aspectDiff < 0.1) score += 20;
+    else if (aspectDiff < 0.3) score += 15;
+    else if (aspectDiff < 0.5) score += 10;
+    else if (aspectDiff < 1.0) score += 5;
+    
+    // いいね数スコア (0-20点)
+    const likes = imageData.likes || 0;
+    if (likes >= 1000) score += 20;
+    else if (likes >= 500) score += 15;
+    else if (likes >= 100) score += 10;
+    else if (likes >= 50) score += 5;
+    
+    // 説明文スコア (0-20点)
+    const hasDescription = !!(imageData.description || imageData.alt_description);
+    const descLength = (imageData.description || imageData.alt_description || '').length;
+    
+    if (hasDescription) {
+      if (descLength >= 50) score += 20;
+      else if (descLength >= 20) score += 15;
+      else if (descLength >= 10) score += 10;
+      else score += 5;
+    }
+    
+    return score;
   }
 
   // 画像検索API呼び出し
@@ -186,22 +256,59 @@ class ImageService {
     return data.results || [];
   }
 
-  // 画像データ整形（高解像度URLを優先）
+  // 画像データ整形（高解像度URLを優先・アスペクト比考慮）
   formatImageData(imageData, keyword) {
     if (!imageData) return null;
     
     const targetWidth = imageConfig.video?.targetWidth || 1920;
     const targetHeight = imageConfig.video?.targetHeight || 1080;
+    const targetAspectRatio = targetWidth / targetHeight;
+
+    // 元画像のサイズ情報
+    const originalWidth = imageData.width || targetWidth;
+    const originalHeight = imageData.height || targetHeight;
+    const originalAspectRatio = originalWidth / originalHeight;
+
+    console.log(`📐 画像アスペクト比: ${originalAspectRatio.toFixed(2)} (元: ${originalWidth}x${originalHeight})`);
 
     // Unsplash raw にクエリを付与して高解像度かつ圧縮品質を指定
     const raw = imageData.urls?.raw;
     const full = imageData.urls?.full;
     const regular = imageData.urls?.regular;
 
-    // raw があれば最優先でパラメータ制御
-    const bestUrl = raw
-      ? `${raw}&w=${targetWidth}&h=${targetHeight}&fit=max&q=90&fm=webp&auto=format`
-      : (full || regular || imageData.urls?.small);
+    let bestUrl;
+    
+    if (raw) {
+      // アスペクト比に応じて適切なサイズを計算
+      let requestWidth, requestHeight;
+      
+      if (Math.abs(originalAspectRatio - targetAspectRatio) < 0.1) {
+        // アスペクト比が近い場合は直接リサイズ
+        requestWidth = targetWidth;
+        requestHeight = targetHeight;
+      } else if (originalAspectRatio > targetAspectRatio) {
+        // 横長画像：高さ基準でクロップ
+        requestHeight = targetHeight;
+        requestWidth = Math.round(requestHeight * originalAspectRatio);
+      } else {
+        // 縦長画像：幅基準でクロップ
+        requestWidth = targetWidth;
+        requestHeight = Math.round(requestWidth / originalAspectRatio);
+      }
+
+      // 最小解像度を保証（品質劣化防止）
+      const minWidth = Math.max(targetWidth, 1280);
+      const minHeight = Math.max(targetHeight, 720);
+      
+      requestWidth = Math.max(requestWidth, minWidth);
+      requestHeight = Math.max(requestHeight, minHeight);
+
+      bestUrl = `${raw}&w=${requestWidth}&h=${requestHeight}&fit=crop&crop=entropy&q=92&fm=webp&auto=format&dpr=1`;
+      console.log(`🎯 最適化URL生成: ${requestWidth}x${requestHeight}`);
+    } else {
+      bestUrl = full || regular || imageData.urls?.small;
+      console.log('⚠️ Raw URL不可 - フォールバック使用');
+    }
 
     return {
       id: imageData.id,
@@ -211,7 +318,11 @@ class ImageService {
       description: imageData.description,
       photographer: imageData.user.name,
       keyword: keyword,
-      isPlaceholder: false
+      isPlaceholder: false,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      originalAspectRatio: originalAspectRatio,
+      optimizedForTarget: !!raw
     };
   }
 

@@ -80,16 +80,19 @@ class OpenAIService {
       });
 
       const data = await response.json();
-      const result = data.choices[0].message.content.toLowerCase().trim();
-      
+      const content = (data.choices?.[0]?.message?.content || '').toLowerCase();
       const validCategories = ['product', 'health', 'money', 'lifestyle', 'skill'];
-      if (validCategories.includes(result)) {
-        console.log(`🎯 AI分野判定: "${keyword}" → ${result}`);
-        return result;
-      } else {
-        console.warn(`⚠️ 無効な分野判定: ${result}, デフォルト使用`);
-        return 'product';
+
+      // 応答文中に含まれる有効カテゴリを抽出（説明文や番号付き回答にも対応）
+      for (const cat of validCategories) {
+        if (content.includes(cat)) {
+          console.log(`🎯 AI分野判定: "${keyword}" → ${cat}`);
+          return cat;
+        }
       }
+
+      console.warn(`⚠️ 無効な分野判定: ${content.slice(0, 30)}..., デフォルト使用`);
+      return 'product';
 
     } catch (error) {
       console.error('❌ 分野判定エラー:', error);

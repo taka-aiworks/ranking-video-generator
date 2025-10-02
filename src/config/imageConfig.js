@@ -6,8 +6,11 @@ export const imageConfig = {
     apiUrl: 'https://api.unsplash.com',
     defaultPerPage: 30,
     orientation: 'landscape', // 'portrait', 'squarish', 'landscape'
-    quality: 'regular', // 'raw', 'full', 'regular', 'small', 'thumb'
+    quality: 'raw', // 'raw', 'full', 'regular', 'small', 'thumb' - 最高品質を優先
     contentFilter: 'high', // コンテンツフィルター
+    minWidth: 1280, // 最小幅
+    minHeight: 720, // 最小高さ
+    preferredAspectRatio: 16/9, // 推奨アスペクト比
   },
 
   // 動画統合設定
@@ -51,8 +54,11 @@ export const imageConfig = {
   processing: {
     maxFileSize: 5 * 1024 * 1024, // 5MB
     allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
-    resizeQuality: 0.9,
+    resizeQuality: 0.92, // 品質向上
     cacheExpiry: 24 * 60 * 60 * 1000, // 24時間
+    cropMode: 'crop', // デフォルトクロップモード
+    smoothingEnabled: true, // 高品質補間
+    smoothingQuality: 'high', // 補間品質
   },
 
   // エラー処理設定

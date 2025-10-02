@@ -47,13 +47,16 @@ class ImageOptimizer {
       this.tempCtx.imageSmoothingEnabled = true;
       this.tempCtx.imageSmoothingQuality = 'high';
 
-      // アスペクト比を保持してリサイズ
+      // アスペクト比を保持してリサイズ（クロップモード使用）
       const drawDimensions = this.calculateDrawDimensions(
         imageElement.width,
         imageElement.height,
         dimensions.width,
-        dimensions.height
+        dimensions.height,
+        'crop' // クロップモードで画像全体を埋める
       );
+
+      console.log(`📏 描画計算: ${imageElement.width}x${imageElement.height} → ${drawDimensions.width}x${drawDimensions.height} (scale: ${drawDimensions.scale.toFixed(2)}, crop: ${drawDimensions.willCrop})`);
 
       // 背景塗りつぶし（白背景）
       this.tempCtx.fillStyle = '#ffffff';
@@ -63,14 +66,33 @@ class ImageOptimizer {
       this.tempCtx.imageSmoothingEnabled = true;
       this.tempCtx.imageSmoothingQuality = 'high';
 
-      // 画像描画
-      this.tempCtx.drawImage(
-        imageElement,
-        drawDimensions.x,
-        drawDimensions.y,
-        drawDimensions.width,
-        drawDimensions.height
-      );
+      // クロップ処理を考慮した画像描画
+      if (drawDimensions.willCrop) {
+        // クロップが必要な場合：クリッピング領域を設定
+        this.tempCtx.save();
+        this.tempCtx.beginPath();
+        this.tempCtx.rect(0, 0, dimensions.width, dimensions.height);
+        this.tempCtx.clip();
+        
+        this.tempCtx.drawImage(
+          imageElement,
+          drawDimensions.x,
+          drawDimensions.y,
+          drawDimensions.width,
+          drawDimensions.height
+        );
+        
+        this.tempCtx.restore();
+      } else {
+        // 通常の描画
+        this.tempCtx.drawImage(
+          imageElement,
+          drawDimensions.x,
+          drawDimensions.y,
+          drawDimensions.width,
+          drawDimensions.height
+        );
+      }
 
       // 最適化された画像データを返す
       // 注意: tempCanvas は共有されるため、ここでクローンを作成して返す
@@ -135,28 +157,59 @@ class ImageOptimizer {
     }
   }
 
-  // アスペクト比保持描画計算
-  calculateDrawDimensions(srcWidth, srcHeight, targetWidth, targetHeight) {
+  // アスペクト比保持描画計算（改良版）
+  calculateDrawDimensions(srcWidth, srcHeight, targetWidth, targetHeight, cropMode = 'fit') {
     const srcRatio = srcWidth / srcHeight;
     const targetRatio = targetWidth / targetHeight;
 
     let drawWidth, drawHeight, x, y;
 
-    if (srcRatio > targetRatio) {
-      // 横長画像 - 高さ基準
-      drawHeight = targetHeight;
-      drawWidth = drawHeight * srcRatio;
-      x = (targetWidth - drawWidth) / 2;
-      y = 0;
+    if (cropMode === 'crop') {
+      // クロップモード：画像を切り取って全体を埋める
+      if (srcRatio > targetRatio) {
+        // 横長画像 - 幅基準でクロップ
+        drawWidth = targetWidth;
+        drawHeight = drawWidth / srcRatio;
+        x = 0;
+        y = (targetHeight - drawHeight) / 2;
+      } else {
+        // 縦長画像 - 高さ基準でクロップ
+        drawHeight = targetHeight;
+        drawWidth = drawHeight * srcRatio;
+        x = (targetWidth - drawWidth) / 2;
+        y = 0;
+      }
     } else {
-      // 縦長画像 - 幅基準
-      drawWidth = targetWidth;
-      drawHeight = drawWidth / srcRatio;
-      x = 0;
-      y = (targetHeight - drawHeight) / 2;
+      // フィットモード：画像全体を表示（従来の動作）
+      if (srcRatio > targetRatio) {
+        // 横長画像 - 高さ基準
+        drawHeight = targetHeight;
+        drawWidth = drawHeight * srcRatio;
+        x = (targetWidth - drawWidth) / 2;
+        y = 0;
+      } else {
+        // 縦長画像 - 幅基準
+        drawWidth = targetWidth;
+        drawHeight = drawWidth / srcRatio;
+        x = 0;
+        y = (targetHeight - drawHeight) / 2;
+      }
     }
 
-    return { x, y, width: drawWidth, height: drawHeight };
+    // 描画領域の調整情報も返す
+    const scaleX = drawWidth / srcWidth;
+    const scaleY = drawHeight / srcHeight;
+    const actualScale = Math.min(scaleX, scaleY);
+
+    return { 
+      x, 
+      y, 
+      width: drawWidth, 
+      height: drawHeight,
+      scale: actualScale,
+      cropMode: cropMode,
+      willCrop: cropMode === 'crop' && (drawWidth > targetWidth || drawHeight > targetHeight)
+    };
   }
 
   // 🔧 修正版プレースホルダー作成（Canvas不要）
