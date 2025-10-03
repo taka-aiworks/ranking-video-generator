@@ -267,7 +267,7 @@ ${jsonTemplate}
   }
 
   // メイン生成関数
-  async generateVideoDesign(keyword, template, format = 'short', duration = 30) {
+  async generateVideoDesign(keyword, template, format = 'short', duration = 40) {
     console.log(`🎯 実用的AI生成開始: ${keyword}`);
 
     try {

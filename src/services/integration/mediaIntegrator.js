@@ -211,6 +211,76 @@ class MediaIntegrator {
     return typeSet[variation % typeSet.length];
   }
 
+  // プレースホルダーURL生成
+  createPlaceholderUrl(keyword) {
+    const encodedKeyword = encodeURIComponent(keyword);
+    return `data:image/svg+xml;base64,${btoa(`
+      <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f0f0f0"/>
+        <text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="48" fill="#666">
+          ${encodedKeyword}
+        </text>
+      </svg>
+    `)}`;
+  }
+
+  // 単一画像取得（レート制限対応）
+  async fetchSingleImage(keywordData, index, usedUrls, usedKeywords) {
+    const { keyword, slideIndex, type } = keywordData;
+    const cacheKey = `slide_${slideIndex}_${keyword}`;
+    
+    // キャッシュチェック
+    if (this.imageCache.has(cacheKey)) {
+      return { ...this.imageCache.get(cacheKey), slideIndex };
+    }
+
+    try {
+      let finalKeyword = keyword;
+      
+      // キーワード重複チェック
+      if (usedKeywords.has(keyword)) {
+        const modifiers = ['beautiful', 'modern', 'bright', 'natural', 'clean'];
+        finalKeyword = `${keyword} ${modifiers[index % modifiers.length]}`;
+        console.log(`🔄 キーワード重複回避: ${keyword} → ${finalKeyword}`);
+      }
+      usedKeywords.add(finalKeyword);
+
+      const imageData = await imageService.fetchMainImage(finalKeyword, { type });
+      
+      // URL重複チェック
+      if (usedUrls.has(imageData.url)) {
+        console.log(`🔄 URL重複回避: ${imageData.url} → プレースホルダー使用`);
+        return {
+          slideIndex,
+          keyword: finalKeyword,
+          url: this.createPlaceholderUrl(finalKeyword),
+          description: `Placeholder for ${finalKeyword}`,
+          author: 'System',
+          source: 'placeholder',
+          ready: true
+        };
+      }
+      
+      usedUrls.add(imageData.url);
+      
+      // キャッシュに保存
+      this.imageCache.set(cacheKey, imageData);
+      
+      return { ...imageData, slideIndex };
+    } catch (error) {
+      console.error(`❌ 画像取得エラー (${keyword}):`, error);
+      return {
+        slideIndex,
+        keyword,
+        url: this.createPlaceholderUrl(keyword),
+        description: `Error placeholder for ${keyword}`,
+        author: 'System',
+        source: 'error',
+        ready: true
+      };
+    }
+  }
+
   // 動的画像一括取得（改良版）
   async fetchDynamicImages(keywords, forceRefresh = false) {
     console.log(`🔄 ${keywords.length}件の画像を取得中...`);
@@ -218,96 +288,20 @@ class MediaIntegrator {
     const usedUrls = new Set();
     const usedKeywords = new Set();
     
-    const fetchPromises = keywords.map(async (keywordData, index) => {
-      const { keyword, slideIndex, type } = keywordData;
-      const cacheKey = `slide_${slideIndex}_${keyword}`;
+    // 並列処理を制限（レート制限回避）
+    const results = [];
+    for (let index = 0; index < keywords.length; index++) {
+      const keywordData = keywords[index];
+      const result = await this.fetchSingleImage(keywordData, index, usedUrls, usedKeywords);
+      results.push(result);
       
-      // キャッシュチェック
-      if (!forceRefresh && this.imageCache.has(cacheKey)) {
-        return { ...this.imageCache.get(cacheKey), slideIndex };
+      // レート制限回避のため待機（5秒間隔に合わせる）
+      if (index < keywords.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
-
-      try {
-        let finalKeyword = keyword;
-        
-        // キーワード重複チェック
-        if (usedKeywords.has(keyword)) {
-          const modifiers = ['beautiful', 'modern', 'bright', 'natural', 'clean'];
-          finalKeyword = `${keyword} ${modifiers[index % modifiers.length]}`;
-          console.log(`🔄 キーワード重複回避: ${keyword} → ${finalKeyword}`);
-        }
-        usedKeywords.add(finalKeyword);
-
-        // 画像取得
-        const image = await imageService.fetchMainImage(finalKeyword, {
-          orientation: 'landscape',
-          type: type
-        });
-
-        if (image && image.url) {
-          // URL重複チェック
-          if (usedUrls.has(image.url)) {
-            // 重複の場合、さらに修飾語を追加
-            const altKeyword = `${finalKeyword} variation ${index % 3 + 1}`;
-            const altImage = await imageService.fetchMainImage(altKeyword, {
-              orientation: 'landscape',
-              type: type
-            });
-            
-            if (altImage && altImage.url && !usedUrls.has(altImage.url)) {
-              usedUrls.add(altImage.url);
-              const imageElement = await imageService.preloadImage(altImage.url);
-              const result = {
-                ...altImage,
-                imageElement: imageElement,
-                slideIndex: slideIndex,
-                keyword: altKeyword,
-                type: type,
-                ready: true
-              };
-              this.imageCache.set(cacheKey, result);
-              return result;
-            }
-          } else {
-            usedUrls.add(image.url);
-          }
-          
-          const imageElement = await imageService.preloadImage(image.url);
-          const result = {
-            ...image,
-            imageElement: imageElement,
-            slideIndex: slideIndex,
-            keyword: finalKeyword,
-            type: type,
-            ready: true
-          };
-          
-          this.imageCache.set(cacheKey, result);
-          return result;
-        } else {
-          return {
-            slideIndex: slideIndex,
-            keyword: finalKeyword,
-            type: type,
-            isPlaceholder: true,
-            imageElement: null,
-            ready: false
-          };
-        }
-      } catch (error) {
-        console.warn(`⚠️ 画像取得失敗 (${keyword}):`, error.message);
-        return {
-          slideIndex: slideIndex,
-          keyword: keyword,
-          type: type,
-          isPlaceholder: true,
-          imageElement: null,
-          ready: false
-        };
-      }
-    });
-
-    const results = await Promise.all(fetchPromises);
+    }
+    
+    const fetchPromises = results;
     console.log(`✅ 改良版画像取得完了: 全${results.length}件, ユニーク${usedUrls.size}件`);
     
     this.currentImages = results;

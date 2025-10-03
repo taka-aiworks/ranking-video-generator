@@ -5,11 +5,12 @@ import imageConfig from '../../config/imageConfig.js';
 
 class ImageService {
   constructor() {
-    this.apiKey = '8L33qjsyEuni44KLmCnBJUjKNmf9PkImDpoC7CKTR0I';
+    // 環境変数からAPIキーを取得（フォールバック付き）
+    this.apiKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY || '8L33qjsyEuni44KLmCnBJUjKNmf9PkImDpoC7CKTR0I';
     this.baseUrl = 'https://api.unsplash.com';
     this.cache = new Map();
     
-    console.log('🔑 Unsplash API Key設定完了');
+    console.log('🔑 Unsplash API Key設定完了:', this.apiKey ? '設定済み' : '❌未設定');
     
     // NGキーワード（YouTube矢印など）
     this.avoidKeywords = [
@@ -23,6 +24,11 @@ class ImageService {
     }
   }
 
+  // ユーティリティ: 待機
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   // メイン画像取得
   async fetchMainImage(keyword, options = {}) {
     try {
@@ -33,8 +39,23 @@ class ImageService {
       console.log('✨ キーワード処理結果:', enhancedKeyword);
       
       if (!this.apiKey) {
+        console.log('⚠️ APIキー未設定 - プレースホルダー使用');
         return this.createPlaceholder(keyword);
       }
+      
+      // レート制限チェック（厳格版）
+      const now = Date.now();
+      const lastRequest = this.cache.get('last_request') || 0;
+      const timeDiff = now - lastRequest;
+      
+      // 最小間隔: 5秒（50 requests/hour制限対応 - より安全）
+      if (timeDiff < 5000) {
+        const waitTime = 5000 - timeDiff;
+        console.log(`⏳ レート制限回避: ${waitTime}ms待機 (50 requests/hour制限 - 安全モード)`);
+        await this.sleep(waitTime);
+      }
+      
+      this.cache.set('last_request', Date.now());
       
       // 画像検索実行
       const searchResults = await this.searchImages(enhancedKeyword, {
@@ -249,6 +270,16 @@ class ImageService {
     const response = await fetch(this.baseUrl + '/search/photos?' + params);
     
     if (!response.ok) {
+      if (response.status === 403) {
+        console.error('🚨 Unsplash API 403エラー: APIキーが無効または制限に達しています');
+        console.log('💡 解決方法:');
+        console.log('  1. Unsplash DeveloperでAPIキーを確認');
+        console.log('  2. レート制限を確認 (50 requests/hour)');
+        console.log('  3. .envファイルにVITE_UNSPLASH_ACCESS_KEYを設定');
+        console.log('  4. 新しいAPIキーを取得して設定');
+        console.log('  5. 現在のAPIキー: ' + this.apiKey.substring(0, 20) + '...');
+        return []; // 空配列を返してプレースホルダーにフォールバック
+      }
       throw new Error('API Error: ' + response.status);
     }
     

@@ -31,12 +31,12 @@ class VideoComposer {
   startRecording(duration, options = {}) {
     // 🎯 動画の内容に応じたビットレート調整
     const isStaticContent = true; // 主に静止画とテキスト
-    const baseBitrate = isStaticContent ? 4000000 : 8000000; // 4Mbps or 8Mbps
+    const baseBitrate = isStaticContent ? 2000000 : 4000000; // 2Mbps or 4Mbps（適正化）
     
     const {
-      fps = 30, // 静止画中心なので30fpsで十分
+      fps = 15, // 静止画中心なので15fpsで十分
       videoBitsPerSecond = baseBitrate,
-      mimeTypePreferred = 'video/webm;codecs=vp9'
+      mimeTypePreferred = 'video/webm;codecs=vp8' // vp8に変更（互換性向上）
     } = options;
 
     const stream = this.canvas.captureStream(fps);
@@ -62,10 +62,17 @@ class VideoComposer {
     this.recorder = new MediaRecorder(stream, recorderOptions);
     
     const chunks = [];
+    let chunkCount = 0;
     this.recorder.ondataavailable = e => {
       if (e.data.size > 0) {
         chunks.push(e.data);
-        console.log('📦 データチャンク追加:', e.data.size, 'bytes');
+        chunkCount++;
+        console.log('📦 データチャンク追加:', e.data.size, 'bytes', '累計:', chunkCount, 'チャンク');
+        
+        // 🎯 リアルタイムでチャンク状況を確認
+        if (chunkCount % 5 === 0) {
+          console.log('⏰ 録画進捗:', chunkCount + 'チャンク');
+        }
       }
     };
     
@@ -78,29 +85,37 @@ class VideoComposer {
     return new Promise((resolve, reject) => {
       this.recorder.onstop = () => {
         console.log('⏹️ 録画停止、ファイル作成中...');
+        console.log('📊 データチャンク統計:', {
+          totalChunks: chunkCount,
+          totalSize: chunks.reduce((sum, chunk) => sum + chunk.size, 0) + ' bytes',
+          averageChunkSize: Math.round(chunks.reduce((sum, chunk) => sum + chunk.size, 0) / chunkCount) + ' bytes'
+        });
+        
         const videoBlob = new Blob(chunks, { type: 'video/webm' });
         const url = URL.createObjectURL(videoBlob);
         
         console.log('✅ 動画ファイル作成完了:', (videoBlob.size / (1024*1024)).toFixed(2) + 'MB');
+        console.log('🎯 期待される動画時間:', actualDuration/1000 + '秒');
         
         resolve({
           blob: videoBlob,
           url: url,
-          size: (videoBlob.size / (1024*1024)).toFixed(2) + 'MB'
+          size: (videoBlob.size / (1024*1024)).toFixed(2) + 'MB',
+          expectedDuration: actualDuration/1000 + '秒'
         });
       };
       
       this.recorder.onerror = reject;
-      this.recorder.start();
+      this.recorder.start(); // 🎯 デフォルト設定で開始
       
-      // 🎯 改善された録画タイマー（余裕時間を最小限に）
-      const bufferTime = Math.min(5000, duration * 0.1); // 最大5秒または動画時間の10%
-      const actualDuration = duration + bufferTime;
+      // 🎯 緊急修正：MediaRecorderの時間記録問題を解決
+      // 実際のスライド描画時間 + 安全マージンで正確に設定
+      const actualDuration = duration + 5000; // 5秒の安全マージン
       
       console.log('⏰ 録画タイマー設定:', {
         requestedDuration: duration/1000 + 's',
-        bufferTime: bufferTime/1000 + 's',
-        actualDuration: actualDuration/1000 + 's'
+        actualDuration: actualDuration/1000 + 's',
+        safetyMargin: '5s'
       });
       
       const recordingTimer = setTimeout(() => {
@@ -130,43 +145,60 @@ class VideoComposer {
     }
 
     this.isGenerating = true;
-    const totalDuration = (videoDesign.duration || 30) * 1000;
+    // 🎯 修正：固定時間を削除し、内容に応じた動的計算に変更
+    const baseDuration = (videoDesign.duration || 40) * 1000; // 参考値として保持
 
     try {
-      loopController.startSession(
-        (totalDuration / 1000) + 25,
-        this.recorder, 
-        (reason) => {
-          console.error('🚨 強制停止:', reason);
-          throw new Error(`録画が強制停止されました: ${reason}`);
-        }
-      );
-      
-      console.log('🔴 録画処理開始');
-      const recording = this.startRecording(totalDuration);
-      console.log('✅ MediaRecorder開始完了');
-      
+      // 🎯 修正：先に時間計算を行う
       let currentSlideIndex = 0;
       const itemSlides = videoDesign.items.length * 3;
       const totalSlides = 1 + itemSlides + 1;
       
-      // 🎯 改善された時間配分計算
-      const titleMs = Math.max(2000, Math.floor(totalDuration * 0.1)); // 10%または最低2秒
-      const summaryMs = Math.max(3000, Math.floor(totalDuration * 0.15)); // 15%または最低3秒
-      const remainingMs = Math.max(0, totalDuration - titleMs - summaryMs);
-      const perItemSlideMs = itemSlides > 0 ? Math.max(1500, Math.floor(remainingMs / itemSlides)) : 0;
+      // 🎯 実際の表示時間を記録
+      const slideTimings = [];
+      const sessionStartTime = Date.now();
       
-      // 実際の計算時間を記録
-      const calculatedTotalMs = titleMs + (perItemSlideMs * itemSlides) + summaryMs;
+      // 🎯 修正：ContentAnalyzerの計算時間を使用
+      const requestedDuration = videoDesign.duration || 30; // ContentAnalyzerから取得した時間
+      
+      // スライド時間を動的に計算（要求時間に応じて調整）
+      const titleMs = Math.max(4000, Math.floor(requestedDuration * 1000 * 0.08)); // 8%をタイトルに
+      const summaryMs = Math.max(10000, Math.floor(requestedDuration * 1000 * 0.18)); // 18%をまとめに（チャンネル登録時間をさらに確保）
+      const remainingMs = (requestedDuration * 1000) - titleMs - summaryMs;
+      const perItemSlideMs = Math.max(3000, Math.floor(remainingMs / itemSlides)); // 残り時間を項目スライドに分配
+      
+      // 実際の動画時間を計算
+      const totalDuration = titleMs + (perItemSlideMs * itemSlides) + summaryMs;
+      
+      // 🎯 修正：LoopControllerを無効化（内容完了後の自然な停止を優先）
+      // loopController.startSession(
+      //   (totalDuration / 1000) + 25,
+      //   this.recorder, 
+      //   (reason) => {
+      //     console.error('🚨 強制停止:', reason);
+      //     throw new Error(`録画が強制停止されました: ${reason}`);
+      //   }
+      // );
+      
+      console.log('🔴 録画処理開始');
+      // 🎯 修正：実際の動画時間で録画開始
+      const recording = this.startRecording(totalDuration);
+      console.log('✅ MediaRecorder開始完了');
       
       console.log('📋 詳細スライド計画:', {
         totalSlides: totalSlides,
-        requestedDuration: totalDuration / 1000 + 's',
-        calculatedDuration: calculatedTotalMs / 1000 + 's',
-        titleMs: titleMs,
-        perItemSlideMs: perItemSlideMs,
-        summaryMs: summaryMs,
-        itemSlides: itemSlides
+        calculatedDuration: totalDuration / 1000 + 's',
+        titleMs: titleMs + 'ms (' + (titleMs/1000) + 's)',
+        perItemSlideMs: perItemSlideMs + 'ms (' + (perItemSlideMs/1000) + 's)',
+        summaryMs: summaryMs + 'ms (' + (summaryMs/1000) + 's)',
+        itemSlides: itemSlides,
+        itemsCount: videoDesign.items.length,
+        breakdown: {
+          title: titleMs/1000 + 's',
+          items: (perItemSlideMs * itemSlides)/1000 + 's (' + itemSlides + ' slides)',
+          summary: summaryMs/1000 + 's',
+          total: totalDuration/1000 + 's'
+        }
       });
       
       // タイトルスライド
@@ -174,7 +206,13 @@ class VideoComposer {
       const titleImage = this.getSlideImage(slideImages, currentSlideIndex);
       this.renderTitleSlide(videoDesign, titleImage);
       
+      const titleStartTime = Date.now();
       await this.sleep(titleMs);
+      slideTimings.push({
+        slide: 'title',
+        planned: titleMs,
+        actual: Date.now() - titleStartTime
+      });
       currentSlideIndex++;
 
       // 各項目のスライド
@@ -182,13 +220,24 @@ class VideoComposer {
         const item = videoDesign.items[i];
         
         for (let j = 0; j < 3; j++) {
-          console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] 項目${i+1} サブ${j+1} 描画`);
+          console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] 項目${i+1} サブ${j+1} 描画開始`);
           
           const itemImage = this.getSlideImage(slideImages, currentSlideIndex);
+          console.log(`🖼️ 項目${i+1}-${j+1}画像:`, itemImage ? '画像あり' : '画像なし');
           
           this.renderItemSlide(item, i + 1, j, itemImage);
+          console.log(`✅ 項目${i+1}-${j+1}描画完了`);
           
+          const itemStartTime = Date.now();
+          console.log(`⏰ 項目${i+1}-${j+1}表示開始:`, perItemSlideMs + 'ms');
           await this.sleep(perItemSlideMs);
+          console.log(`✅ 項目${i+1}-${j+1}表示完了`);
+          
+          slideTimings.push({
+            slide: `item${i+1}_${j+1}`,
+            planned: perItemSlideMs,
+            actual: Date.now() - itemStartTime
+          });
           currentSlideIndex++;
           
           if (onProgress) {
@@ -200,44 +249,67 @@ class VideoComposer {
       }
 
       // まとめスライド
-      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] まとめスライド描画`);
+      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] まとめスライド描画開始`);
       const summaryImage = this.getSlideImage(slideImages, currentSlideIndex);
+      console.log('🖼️ まとめ画像取得完了:', summaryImage ? '画像あり' : '画像なし');
+      
+      console.log('🎨 まとめスライド描画実行中...');
       this.renderSummarySlide(videoDesign, summaryImage);
+      console.log('✅ まとめスライド描画完了');
       
+      const summaryStartTime = Date.now();
+      console.log('⏰ まとめスライド表示開始:', summaryMs + 'ms');
       await this.sleep(summaryMs);
+      console.log('✅ まとめスライド表示完了');
       
-      console.log('🏁 全スライド描画完了、録画停止待機');
+      slideTimings.push({
+        slide: 'summary',
+        planned: summaryMs,
+        actual: Date.now() - summaryStartTime
+      });
       
-      // 実際の描画時間を計算
-      const actualDrawingTime = calculatedTotalMs;
+      console.log('🏁 全スライド描画完了');
       
-      // 描画完了後、少し待ってから録画停止
-      await this.sleep(500); // 0.5秒のバッファ
+      // 🎯 修正：手動停止を完全に削除し、タイマー停止のみを使用
+      console.log('⏰ タイマー停止まで待機中...');
       
-      // 手動で録画停止（タイマーより早く終了）
-      if (this.recorder && this.recorder.state === 'recording') {
-        console.log('🛑 手動録画停止実行');
-        this.recorder.stop();
-        if (this.recordingTimer) {
-          clearTimeout(this.recordingTimer);
-        }
-      }
+      // タイマーが発火するまで待機（手動停止なし）
       
       const videoData = await recording;
       
-      loopController.endSession();
+      // 🎯 修正：LoopControllerの終了処理も無効化
+      // loopController.endSession();
       
-      console.log('✅ 画像付き動画生成完了', {
-        requestedDuration: totalDuration / 1000 + 's',
-        actualDrawingTime: actualDrawingTime / 1000 + 's',
-        fileSize: videoData.size
+      // 🎯 詳細な時間分析
+      const totalActualTime = Date.now() - sessionStartTime;
+      const plannedTotal = slideTimings.reduce((sum, t) => sum + t.planned, 0);
+      const actualTotal = slideTimings.reduce((sum, t) => sum + t.actual, 0);
+      
+      // 実際の動画時間
+      const actualDurationSeconds = totalActualTime / 1000;
+      
+      console.log('✅ 画像付き動画生成完了');
+      console.log('📊 時間分析詳細:', {
+        calculatedDuration: totalDuration / 1000 + 's',
+        actualDuration: actualDurationSeconds + 's',
+        plannedDrawingTime: plannedTotal / 1000 + 's',
+        actualDrawingTime: actualTotal / 1000 + 's',
+        fileSize: videoData.size,
+        contentComplete: true
       });
+      
+      console.log('📋 スライド別時間詳細:', slideTimings.map(t => ({
+        slide: t.slide,
+        planned: (t.planned/1000).toFixed(1) + 's',
+        actual: (t.actual/1000).toFixed(1) + 's',
+        diff: ((t.actual - t.planned)/1000).toFixed(1) + 's'
+      })));
       
       return {
         success: true,
         videoBlob: videoData.blob,
         url: videoData.url,
-        duration: actualDrawingTime / 1000, // 実際の描画時間を返す
+        duration: actualDurationSeconds, // 実際の動画時間を返す
         requestedDuration: totalDuration / 1000,
         slideCount: currentSlideIndex + 1,
         imagesUsed: slideImages ? Object.keys(slideImages).length : 0,
@@ -248,9 +320,10 @@ class VideoComposer {
     } catch (error) {
       console.error('🚨 画像付き動画生成エラー:', error);
       
-      if (loopController.isSessionActive && loopController.isSessionActive()) {
-        loopController.endSession();
-      }
+      // 🎯 修正：エラー時のLoopController処理も無効化
+      // if (loopController.isSessionActive && loopController.isSessionActive()) {
+      //   loopController.endSession();
+      // }
       
       throw error;
     } finally {

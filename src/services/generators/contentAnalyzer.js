@@ -48,12 +48,12 @@ class UniversalContentAnalyzer {
     
     const baseTimes = {
       short: {
-        ranking: 25,      // ランキング系
-        comparison: 30,   // 比較系
-        howto: 35,        // やり方系
-        review: 28,       // レビュー系
-        explanation: 22,  // 解説系
-        list: 20          // リスト系
+        ranking: 35,      // ランキング系 - ショート動画に適した長さ
+        comparison: 40,   // 比較系 - 十分な比較時間
+        howto: 45,        // やり方系 - 詳しく説明可能
+        review: 38,       // レビュー系 - 充実した内容
+        explanation: 32,  // 解説系 - わかりやすく説明
+        list: 30          // リスト系 - 見やすいリスト表示
       },
       medium: {
         ranking: 90,
@@ -64,12 +64,12 @@ class UniversalContentAnalyzer {
         list: 70
       },
       auto: {
-        ranking: 25,
-        comparison: 30,
-        howto: 35,
-        review: 28,
-        explanation: 22,
-        list: 20
+        ranking: 35,      // ショート動画に適した長さに調整
+        comparison: 40,   // 比較系も少し長めに
+        howto: 45,        // やり方系は詳しく説明できるように
+        review: 38,       // レビュー系も充実させる
+        explanation: 32,  // 解説系も十分な時間を
+        list: 30          // リスト系も見やすく
       }
     };
     
@@ -187,7 +187,7 @@ class UniversalContentAnalyzer {
     const recommendations = {
       short: {
         min: 15,
-        optimal: 25,
+        optimal: 40,      // ショート動画の最適時間を40秒に調整
         max: 60,
         description: 'TikTok・YouTube Shorts最適化'
       },
@@ -199,7 +199,7 @@ class UniversalContentAnalyzer {
       },
       auto: {
         min: 15,
-        optimal: 30,
+        optimal: 40,      // AI自動判断でも40秒を基準に
         max: 60,
         description: 'AI自動判断・最適化'
       }
