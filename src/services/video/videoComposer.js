@@ -36,24 +36,38 @@ class VideoComposer {
     
     this.ctx = this.canvas.getContext('2d');
     
+    // 高解像度対応（Retina対応）
     const { width = 1080, height = 1920 } = videoDesign?.canvas || {};
-    this.canvas.width = width;
-    this.canvas.height = height;
+    const pixelRatio = window.devicePixelRatio || 2; // 高解像度ディスプレイ対応
     
-    console.log(`✅ Canvas: ${width}x${height}`);
+    // Canvasの実際のサイズを設定
+    this.canvas.width = width * pixelRatio;
+    this.canvas.height = height * pixelRatio;
+    
+    // CSS表示サイズを設定
+    this.canvas.style.width = width + 'px';
+    this.canvas.style.height = height + 'px';
+    
+    // 高品質描画設定
+    this.ctx.scale(pixelRatio, pixelRatio);
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = 'high';
+    this.ctx.textRenderingOptimization = 'optimizeQuality';
+    
+    console.log(`✅ Canvas: ${width}x${height} (${pixelRatio}x scale)`);
     return this.canvas;
   }
 
   // 高品質録画開始（ビットレート/コーデック/フレームレート指定）
   startRecording(duration, options = {}) {
-    // 🎯 動画の内容に応じたビットレート調整
+    // 🎯 高品質動画のためのビットレート調整
     const isStaticContent = true; // 主に静止画とテキスト
-    const baseBitrate = isStaticContent ? 2000000 : 4000000; // 2Mbps or 4Mbps（適正化）
+    const baseBitrate = isStaticContent ? 8000000 : 12000000; // 8Mbps or 12Mbps（高品質化）
     
     const {
-      fps = 15, // 静止画中心なので15fpsで十分
+      fps = 30, // 高品質のため30fpsに向上
       videoBitsPerSecond = baseBitrate,
-      mimeTypePreferred = 'video/webm;codecs=vp8' // vp8に変更（互換性向上）
+      mimeTypePreferred = 'video/webm;codecs=vp9' // vp9に変更（高品質・高圧縮）
     } = options;
 
     const canvasStream = this.canvas.captureStream(fps);
@@ -77,12 +91,17 @@ class VideoComposer {
       console.log('🎵 BGM付きストリーム作成完了');
     }
 
-    // 使用可能な mimeType を選択
+    // 使用可能な mimeType を選択（高品質優先）
     let mimeType = mimeTypePreferred;
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
       if (!MediaRecorder.isTypeSupported(mimeTypePreferred)) {
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        // 高品質フォールバック順序
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+          mimeType = 'video/webm;codecs=vp9';
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
           mimeType = 'video/webm;codecs=vp8';
+        } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
+          mimeType = 'video/mp4;codecs=h264';
         } else if (MediaRecorder.isTypeSupported('video/webm')) {
           mimeType = 'video/webm';
         } else {

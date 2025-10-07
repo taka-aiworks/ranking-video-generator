@@ -310,31 +310,41 @@ class ImageService {
     let bestUrl;
     
     if (raw) {
-      // アスペクト比に応じて適切なサイズを計算
+      // 高解像度対応：アスペクト比に応じて適切なサイズを計算
       let requestWidth, requestHeight;
       
+      // より高解像度を要求（2倍の解像度で取得してからリサイズ）
+      const highResMultiplier = 2;
+      const highResTargetWidth = targetWidth * highResMultiplier;
+      const highResTargetHeight = targetHeight * highResMultiplier;
+      
       if (Math.abs(originalAspectRatio - targetAspectRatio) < 0.1) {
-        // アスペクト比が近い場合は直接リサイズ
-        requestWidth = targetWidth;
-        requestHeight = targetHeight;
+        // アスペクト比が近い場合は高解像度で直接リサイズ
+        requestWidth = Math.max(highResTargetWidth, 2560); // 最小2560px
+        requestHeight = Math.max(highResTargetHeight, 1440); // 最小1440px
       } else if (originalAspectRatio > targetAspectRatio) {
-        // 横長画像：高さ基準でクロップ
-        requestHeight = targetHeight;
+        // 横長画像：高さ基準でクロップ（高解像度）
+        requestHeight = Math.max(highResTargetHeight, 1440);
         requestWidth = Math.round(requestHeight * originalAspectRatio);
       } else {
-        // 縦長画像：幅基準でクロップ
-        requestWidth = targetWidth;
+        // 縦長画像：幅基準でクロップ（高解像度）
+        requestWidth = Math.max(highResTargetWidth, 2560);
         requestHeight = Math.round(requestWidth / originalAspectRatio);
       }
 
-      // 最小解像度を保証（品質劣化防止）
-      const minWidth = Math.max(targetWidth, 1280);
-      const minHeight = Math.max(targetHeight, 720);
+      // 最高品質パラメータ
+      const qualityParams = [
+        `w=${requestWidth}`,
+        `h=${requestHeight}`,
+        `fit=crop`,
+        `crop=entropy`,
+        `q=95`, // 最高品質
+        `fm=webp`, // WebP形式（高品質・小サイズ）
+        `auto=format`,
+        `dpr=2` // 高解像度ディスプレイ対応
+      ].join('&');
       
-      requestWidth = Math.max(requestWidth, minWidth);
-      requestHeight = Math.max(requestHeight, minHeight);
-
-      bestUrl = `${raw}&w=${requestWidth}&h=${requestHeight}&fit=crop&crop=entropy&q=92&fm=webp&auto=format&dpr=1`;
+      bestUrl = `${raw}&${qualityParams}`;
       console.log(`🎯 最適化URL生成: ${requestWidth}x${requestHeight}`);
     } else {
       bestUrl = full || regular || imageData.urls?.small;

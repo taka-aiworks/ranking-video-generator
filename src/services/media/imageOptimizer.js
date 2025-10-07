@@ -62,9 +62,11 @@ class ImageOptimizer {
       this.tempCtx.fillStyle = '#ffffff';
       this.tempCtx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-      // 高品質補間設定（ブラウザによっては無視されるが指定しておく）
+      // 最高品質補間設定
       this.tempCtx.imageSmoothingEnabled = true;
       this.tempCtx.imageSmoothingQuality = 'high';
+      this.tempCtx.patternQuality = 'high';
+      this.tempCtx.textRenderingOptimization = 'optimizeQuality';
 
       // クロップ処理を考慮した画像描画
       if (drawDimensions.willCrop) {
