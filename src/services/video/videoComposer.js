@@ -56,7 +56,26 @@ class VideoComposer {
       mimeTypePreferred = 'video/webm;codecs=vp8' // vp8に変更（互換性向上）
     } = options;
 
-    const stream = this.canvas.captureStream(fps);
+    const canvasStream = this.canvas.captureStream(fps);
+    
+    // 🎵 BGMがある場合は音声ストリームを追加
+    let stream = canvasStream;
+    if (this.audioBuffer && this.audioContext) {
+      const audioDestination = this.audioContext.createMediaStreamDestination();
+      
+      // BGMを音声ストリームに接続
+      this.bgmSource = this.audioContext.createBufferSource();
+      this.bgmSource.buffer = this.audioBuffer;
+      this.bgmSource.loop = true;
+      this.bgmSource.connect(audioDestination);
+      
+      // Canvasと音声を結合
+      stream = new MediaStream([
+        ...canvasStream.getTracks(),
+        ...audioDestination.stream.getTracks()
+      ]);
+      console.log('🎵 BGM付きストリーム作成完了');
+    }
 
     // 使用可能な mimeType を選択
     let mimeType = mimeTypePreferred;
@@ -124,12 +143,8 @@ class VideoComposer {
       
       this.recorder.onerror = reject;
       
-      // 🎵 BGM再生開始
-      if (this.audioBuffer) {
-        this.bgmSource = this.audioContext.createBufferSource();
-        this.bgmSource.buffer = this.audioBuffer;
-        this.bgmSource.loop = true;
-        this.bgmSource.connect(this.audioContext.destination);
+      // 🎵 BGM再生開始（ストリームに含まれている場合）
+      if (this.bgmSource) {
         this.bgmSource.start();
         console.log('🎵 BGM再生開始');
       }

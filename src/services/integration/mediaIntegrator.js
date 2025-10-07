@@ -263,10 +263,19 @@ class MediaIntegrator {
       
       usedUrls.add(imageData.url);
       
-      // キャッシュに保存
-      this.imageCache.set(cacheKey, imageData);
+      // 画像要素を事前読み込み
+      const imageElement = await imageService.preloadImage(imageData.url);
+      const result = {
+        ...imageData,
+        imageElement: imageElement,
+        slideIndex,
+        ready: true
+      };
       
-      return { ...imageData, slideIndex };
+      // キャッシュに保存
+      this.imageCache.set(cacheKey, result);
+      
+      return result;
     } catch (error) {
       console.error(`❌ 画像取得エラー (${keyword}):`, error);
       return {
