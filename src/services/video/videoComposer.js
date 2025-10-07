@@ -9,6 +9,23 @@ class VideoComposer {
     this.ctx = null;
     this.recorder = null;
     this.isGenerating = false;
+    this.audioContext = null;
+    this.audioBuffer = null;
+    this.bgmSource = null;
+  }
+
+  // BGM読み込み
+  async loadBGM() {
+    try {
+      this.audioContext = new AudioContext();
+      const response = await fetch('/audio/catchy-bgm.mp3');
+      const arrayBuffer = await response.arrayBuffer();
+      this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      console.log('🎵 BGM読み込み完了');
+    } catch (error) {
+      console.warn('⚠️ BGM読み込み失敗:', error);
+      this.audioBuffer = null;
+    }
   }
 
   initCanvas(canvasRef, videoDesign) {
@@ -106,6 +123,17 @@ class VideoComposer {
       };
       
       this.recorder.onerror = reject;
+      
+      // 🎵 BGM再生開始
+      if (this.audioBuffer) {
+        this.bgmSource = this.audioContext.createBufferSource();
+        this.bgmSource.buffer = this.audioBuffer;
+        this.bgmSource.loop = true;
+        this.bgmSource.connect(this.audioContext.destination);
+        this.bgmSource.start();
+        console.log('🎵 BGM再生開始');
+      }
+      
       this.recorder.start(); // 🎯 デフォルト設定で開始
       
       // 🎯 緊急修正：MediaRecorderの時間記録問題を解決
@@ -120,6 +148,13 @@ class VideoComposer {
       
       const recordingTimer = setTimeout(() => {
         console.log('⏰ タイマー到達 - 録画停止実行');
+        
+        // 🎵 BGM停止
+        if (this.bgmSource) {
+          this.bgmSource.stop();
+          console.log('🎵 BGM停止');
+        }
+        
         if (this.recorder && this.recorder.state === 'recording') {
           this.recorder.stop();
         }
@@ -145,6 +180,9 @@ class VideoComposer {
     }
 
     this.isGenerating = true;
+    
+    // 🎵 BGM読み込み
+    await this.loadBGM();
     // 🎯 修正：固定時間を削除し、内容に応じた動的計算に変更
     const baseDuration = (videoDesign.duration || 40) * 1000; // 参考値として保持
 
