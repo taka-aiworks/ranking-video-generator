@@ -1,6 +1,6 @@
 // src/components/Generator/SimpleVideoGenerator.jsx - 画像切り替え修正版
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Play, Download, Zap, Smartphone, Monitor, Video, Edit3, Save, AlertCircle, CheckCircle } from 'lucide-react';
 
 // サービス層インポート
@@ -8,6 +8,7 @@ import openaiService from '../../services/api/openai.js';
 import videoComposer from '../../services/video/videoComposer.js';
 import contentAnalyzer from '../../services/generators/contentAnalyzer.js';
 import mediaIntegrator from '../../services/integration/mediaIntegrator.js';
+import trendAnalyzer from '../../services/api/trendAnalyzer.js';
 import { useImageIntegration } from '../../hooks/useImageIntegration.js';
 
 const SimpleVideoGenerator = () => {
@@ -28,6 +29,13 @@ const SimpleVideoGenerator = () => {
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [editableScript, setEditableScript] = useState(null);
 
+  // === 🆕 トレンド分析状態 ===
+  const [trendAnalysis, setTrendAnalysis] = useState(null);
+  const [relatedKeywords, setRelatedKeywords] = useState([]);
+  const [isAnalyzingTrend, setIsAnalyzingTrend] = useState(false);
+  const [trendKeywords, setTrendKeywords] = useState([]);
+  const [isLoadingTrends, setIsLoadingTrends] = useState(false);
+
   // === 🆕 画像統合フック ===
   const {
     images,
@@ -42,6 +50,53 @@ const SimpleVideoGenerator = () => {
 
   // === Canvas参照 ===
   const canvasRef = useRef(null);
+
+  // === 🆕 トレンドキーワード取得機能 ===
+  const loadTrendKeywords = useCallback(async () => {
+    setIsLoadingTrends(true);
+    try {
+      console.log('📈 トレンドキーワード取得開始');
+      const keywords = await trendAnalyzer.fetchTrendKeywords();
+      setTrendKeywords(keywords);
+      console.log('📈 トレンドキーワード取得完了:', keywords.length + '個');
+    } catch (error) {
+      console.error('❌ トレンドキーワード取得エラー:', error);
+      // フォールバックキーワードを設定
+      setTrendKeywords(trendAnalyzer.getFallbackTrendKeywords());
+    } finally {
+      setIsLoadingTrends(false);
+    }
+  }, []);
+
+  // === 🆕 トレンド分析機能 ===
+  const analyzeTrend = useCallback(async (inputKeyword) => {
+    if (!inputKeyword.trim()) return;
+    
+    setIsAnalyzingTrend(true);
+    try {
+      console.log('📈 トレンド分析開始:', inputKeyword);
+      
+      // トレンド分析と関連キーワードを並行実行
+      const [trendData, relatedData] = await Promise.all([
+        trendAnalyzer.analyzeTrend(inputKeyword),
+        trendAnalyzer.generateRelatedKeywords(inputKeyword)
+      ]);
+      
+      setTrendAnalysis(trendData);
+      setRelatedKeywords(relatedData);
+      
+      console.log('📈 トレンド分析完了:', { trendData, relatedData });
+    } catch (error) {
+      console.error('❌ トレンド分析エラー:', error);
+    } finally {
+      setIsAnalyzingTrend(false);
+    }
+  }, []);
+
+  // === 🆕 コンポーネント初期化時にトレンドキーワードを取得 ===
+  useEffect(() => {
+    loadTrendKeywords();
+  }, [loadTrendKeywords]);
 
   // === フォーマット設定 ===
   const formats = [
@@ -273,38 +328,147 @@ const SimpleVideoGenerator = () => {
             {/* キーワード入力 */}
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
               <h2 className="text-xl font-bold mb-4">🎯 何について動画を作りますか？</h2>
-              <input
-                type="text"
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                placeholder="例: ワイヤレスイヤホン / 子育てでやったほうがいいこと / iPhone vs Android"
-                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-yellow-400 focus:outline-none text-white placeholder-gray-400 text-lg"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={e => setKeyword(e.target.value)}
+                  onBlur={() => analyzeTrend(keyword)}
+                  placeholder="例: ワイヤレスイヤホン / 子育てでやったほうがいいこと / iPhone vs Android"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-yellow-400 focus:outline-none text-white placeholder-gray-400 text-lg"
+                />
+                {isAnalyzingTrend && (
+                  <div className="absolute right-3 top-3">
+                    <div className="animate-spin w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
+                  </div>
+                )}
+              </div>
               
-              {/* サンプルキーワード */}
+              {/* 🆕 実際のトレンドキーワード（APIから取得） */}
               <div className="mt-4">
-                <p className="text-sm text-gray-400 mb-2">💡 サンプルキーワード:</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    'ワイヤレスイヤホン おすすめ',
-                    '子育てでやったほうがいいこと',
-                    'iPhone vs Android',
-                    '副業の始め方',
-                    'おすすめ映画',
-                    '節約術',
-                    '筋トレ 初心者',
-                    '投資 始め方'
-                  ].map(k => (
-                    <button
-                      key={k}
-                      onClick={() => setKeyword(k)}
-                      className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors"
-                    >
-                      {k}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-400">🔥 リアルタイムトレンドキーワード:</p>
+                  <button
+                    onClick={loadTrendKeywords}
+                    disabled={isLoadingTrends}
+                    className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {isLoadingTrends ? (
+                      <>
+                        <div className="animate-spin w-3 h-3 border border-yellow-400 border-t-transparent rounded-full"></div>
+                        更新中...
+                      </>
+                    ) : (
+                      <>
+                        🔄 更新
+                      </>
+                    )}
+                  </button>
+                </div>
+                
+                {/* デバッグ情報 */}
+                <div className="text-xs text-gray-500 mb-2">
+                  📊 状態: {isLoadingTrends ? '読み込み中' : '完了'} | 
+                  キーワード数: {trendKeywords.length}個 | 
+                  フォールバック: {trendKeywords.length > 0 && trendKeywords[0].source === 'フォールバック' ? 'はい' : 'いいえ'}
+                </div>
+                
+                {isLoadingTrends && trendKeywords.length === 0 ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
+                    <span className="ml-2 text-sm text-gray-400">トレンドキーワード取得中...</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {trendKeywords.map((item, index) => (
+                      <button
+                        key={`trend-${index}`}
+                        onClick={() => setKeyword(item.keyword)}
+                        className={`px-3 py-1 ${item.color} hover:opacity-80 border rounded-full text-sm transition-all duration-200 flex items-center gap-1`}
+                        title={`スコア: ${item.score}/10 | ソース: ${item.source || 'フォールバック'}`}
+                      >
+                        <span className="text-xs">{item.trend}</span>
+                        <span>{item.keyword}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* ソース説明 */}
+                <div className="mt-3 text-xs text-gray-500 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-400">🔥</span>
+                    <span>リアルタイムトレンド（Google・YouTube・Twitter）</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-yellow-400">⭐</span>
+                    <span>安定人気キーワード</span>
+                  </div>
                 </div>
               </div>
+
+              {/* 🆕 トレンド分析結果 */}
+              {trendAnalysis && (
+                <div className="mt-4 p-4 bg-green-500/20 rounded-lg">
+                  <h3 className="text-lg font-bold mb-3">📈 トレンド分析結果</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <p className="text-sm text-gray-400">トレンド度</p>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="bg-yellow-400 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${trendAnalysis.trendScore * 10}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-yellow-400 font-bold">{trendAnalysis.trendScore}/10</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400">検索ボリューム</p>
+                      <span className={`font-bold ${
+                        trendAnalysis.searchVolume === '高' ? 'text-green-400' :
+                        trendAnalysis.searchVolume === '中' ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {trendAnalysis.searchVolume}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* 関連キーワード */}
+                  {relatedKeywords.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-400 mb-2">🔍 関連キーワード:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {relatedKeywords.slice(0, 5).map((kw, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setKeyword(kw)}
+                            className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors"
+                          >
+                            {kw}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 推奨改善案 */}
+                  {trendAnalysis.recommendations && (
+                    <div>
+                      <p className="text-sm text-gray-400 mb-2">💡 推奨改善案:</p>
+                      <ul className="text-sm space-y-1">
+                        {trendAnalysis.recommendations.slice(0, 3).map((rec, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-yellow-400">•</span>
+                            <span>{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-4 p-4 bg-blue-500/20 rounded-lg">
                 <div className="text-sm text-blue-400 font-bold mb-2">🤖 AIが自動で決めること</div>
