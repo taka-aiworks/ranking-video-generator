@@ -149,12 +149,18 @@ class OpenAIService {
     const targetCharCount = Math.floor(actualDuration * 10 * 0.8); // さらに短く（0.8倍）
     const detailsPerItem = Math.floor((targetCharCount - 80) / 3); // タイトルなど80文字を引いて3等分
 
+    const diversityRules = `多様性ルール（厳守）:\n- 各文の主題を必ず変える（例: 指標/時間/確率/頻度/安全/コスト/年齢差/環境/パフォーマンス/ライフハック）\n- 同じ観点の言い換えは禁止（内容重複NG）\n- 数字・時間・%・期間は毎文で異なる具体値を使う\n\n出力条件:\n- 1文25-40文字の自然な日本語\n- 必ず具体的な数字/時間/%/期間を含む\n- 文末に超短い行動（5-10字）を「→」で付ける（例: 「→水500ml」「→ピル相談」「→睡眠7h」）`;
+
     const prompts = {
-      sexed: `「${keyword}」について、誰も教えてくれない本当に知りたい性の知識を紹介してください。\n\n- オナ禁の実際の効果（何日目から変化、ホルモンの具体数値）\n- 性行為後の体の変化（男女別、何時間/何日続くか）\n- 射精の頻度と健康（年齢別の最適回数）\n\n条件:\n- 抽象語はNG。「重要/適切/高い/低い」は使わない\n- 必ず具体的な数字・時間・%・期間を入れる\n- 1文で25-40文字に収める`,
-      generic_deep: `以下を含めて具体性を高める:\n- フック\n- よくある失敗と対策\n- 今日からの1アクション`
+      sexed: `「${keyword}」について、誰も教えてくれない本当に知りたい性の知識を紹介してください。\n\n${diversityRules}\n\n参考観点（例、全てを網羅不要・重複禁止）:\n- ホルモン（テストステロン/プロラクチン）\n- 回復時間/間隔（24-72時間/年齢差）\n- 睡眠の質、深い眠りの開始時刻\n- 栄養（亜鉛/ビタミンD/オメガ3/水分）\n- 安全性/避妊/性感染症の実効率\n- メンタル/集中/意思決定\n- パフォーマンス（消費kcal/心拍）`,
+      health: `「${keyword}」について、エビデンスに基づく実践的な健康知識を紹介してください。\n\n${diversityRules}\n\n参考観点: 負荷/回数/頻度/休息/栄養/睡眠/有酸素/筋力/柔軟/ケガ予防/コスト`,
+      money: `「${keyword}」について、再現性のあるお金の知識を紹介してください。\n\n${diversityRules}\n\n参考観点: 期待利回り/ドローダウン/貯蓄率/固定費/変動費/税/手数料/分散/時間分散/副業時間`,
+      lifestyle: `「${keyword}」について、今日から使える生活の実用知識を紹介してください。\n\n${diversityRules}\n\n参考観点: 時短/習慣/家事/睡眠/食事/整理/衛生/安全/家計/子育て`,
+      skill: `「${keyword}」について、短期で上達する学習の実践知を紹介してください。\n\n${diversityRules}\n\n参考観点: 学習時間/反復間隔/ミス率/練習量/難易度調整/睡眠/復習/環境`,
+      product: `「${keyword}」について、失敗しない選び方・使い方を紹介してください。\n\n${diversityRules}\n\n参考観点: 価格/コスパ/耐久/保証/代替/比較/使い方/保守/レビュー偏り`
     };
 
-    let basePrompt = prompts.sexed;
+    let basePrompt = prompts[category] || prompts.lifestyle;
     if (format !== 'short') {
       basePrompt = `${basePrompt}\n\n${prompts.generic_deep}`;
     }
@@ -213,31 +219,31 @@ class OpenAIService {
               content: `あなたは${category}分野の専門家です。ショート動画用の超簡潔で具体的、そして**誰も教えてくれない本当に知りたい情報**を提供してください。
 
 **必須フォーマット（絶対厳守）:**
-各itemsには "text" フィールドのみ。自然な1文で具体的な情報を書く。
+各itemsには "text" フィールドのみ。自然な1文で具体的な情報を書く。文末に超短い行動（5-10字）を「→」で付ける（例: 「→水500ml」「→睡眠7h」「→ピル相談」）。
 
 **良い例（性教育の場合）:**
 {
-  "text": "オナ禁7日でテストステロン45%上昇、14日でピークに達する"
+  "text": "オナ禁7日でテストステロン45%上昇、14日でピーク→睡眠7h"
 }
 {
-  "text": "射精後30分でプロラクチン分泌が始まり深い眠りに落ちる"
+  "text": "射精後30分でプロラクチン分泌が始まり深い眠り→光遮断"
 }
 {
-  "text": "精子は48-72時間で完全回復、亜鉛サプリで20%早まる"
+  "text": "精子は48-72時間で完全回復、亜鉛で20%早まる→水500ml"
 }
 {
-  "text": "性行為1回で150-200kcal消費、20分の有酸素運動に相当"
+  "text": "性行為1回で150-200kcal消費、心拍120前後→散歩10分"
 }
 
 **悪い例（絶対ダメ）:**
 {
-  "text": "コンドームは99%の避妊効果がある"  ← 薄すぎ、深掘り不足
+  "text": "コンドームは99%の避妊効果がある"  ← 薄すぎ、数値以外の具体性なし
 }
 {
   "text": "性行為で感染リスクが高い"  ← 当たり前、「高い」は抽象的
 }
 {
-  "text": "排尿で尿路感染症リスクを低減できる"  ← 具体的な数字がない、「低減」は抽象的
+  "text": "排尿で尿路感染症リスクを低減できる"  ← 数字・時間がない
 }
 
 **絶対に守ること:**
@@ -246,7 +252,7 @@ class OpenAIService {
 - 1文に複数の具体的情報を詰め込む
 - タブー視されがちだけど知りたい内容を優先
 - 当たり前の教科書的内容は絶対NG
-- 25-40文字の自然な文章`
+- 25-40文字の自然な文章\n- 文末に行動（例: 「→水500ml」）`
             },
             {
               role: 'user',
@@ -254,7 +260,7 @@ class OpenAIService {
             }
           ],
           max_tokens: 4000,
-          temperature: 0.1  // より指示に従うように
+          temperature: 0.35  // 多少の多様性を許容
         })
       });
 
@@ -268,16 +274,42 @@ class OpenAIService {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const jsonString = jsonMatch ? jsonMatch[0] : content;
       const result = JSON.parse(jsonString);
+
+      // 🆕 多様性の後処理：重複・類似の文を間引く
+      const dedup = (items) => {
+        if (!Array.isArray(items)) return [];
+        const seenSignatures = new Set();
+        const cleaned = [];
+        for (const it of items) {
+          const text = (it.text || `${it.name || ''} ${it.main || ''}`).trim();
+          if (!text) continue;
+          // 数字・記号を除去し、主要単語のシグネチャを作成（ひらがな/カタカナ/漢字/英字）
+          const core = text
+            .replace(/[0-9０-９%％\.\-\+\,\s]/g, '')
+            .replace(/[。、「」『』（）()\[\]]/g, '')
+            .toLowerCase();
+          // 上位の特徴語を粗く抽出
+          const signature = core.slice(0, 12); // 先頭12文字で近似
+          if (seenSignatures.has(signature)) continue;
+          seenSignatures.add(signature);
+          cleaned.push({ text });
+        }
+        return cleaned;
+      };
+
+      if (Array.isArray(result.items)) {
+        const diversified = dedup(result.items);
+        // 3件未満なら元を補完（最低3件確保）
+        if (diversified.length >= 3) {
+          result.items = diversified;
+        }
+      }
       
       // デバッグ：itemsの中身を確認
       console.log('🔍 AIレスポンス確認:', {
         title: result.title,
         itemsCount: result.items?.length,
-        items: result.items?.map(item => ({
-          name: item.name,
-          main: item.main,
-          hasMain: !!item.main
-        }))
+        sample: result.items?.slice(0, 5)
       });
       
       result.duration = duration;
@@ -305,9 +337,9 @@ class OpenAIService {
         return `${idx + 1}. ${text}`;
       }).join('\n');
 
-      const systemPrompt = `あなたは性教育の専門家です。既存の文を、教育的で非エロティックかつ科学的に正確に、さらに踏み込んで具体化してください。\n- 抽象語は使わない（重要/適切/高い/低い等）\n- 必ず具体的な数字・時間・%・期間を入れる\n- 危険行為の助長や扇情的表現は禁止\n- 1文25-40文字で自然な日本語\n- 出力はJSONのitems配列のみ（各要素は {"text": "..."} ）`;
+      const systemPrompt = `あなたは${existingDesign?.category || 'sexed'}分野の専門家です。既存の文を、教育的で科学的に正確に、さらに踏み込んで具体化してください。\n- 抽象語は使わない（重要/適切/高い/低い等）\n- 必ず具体的な数字・時間・%・期間を入れる\n- 各文の主題を変える（重複禁止）\n- 文末に超短い行動（5-10字）を「→」で付ける（例: 「→水500ml」「→睡眠7h」「→ピル相談」）\n- 危険行為の助長や扇情的表現は禁止\n- 1文25-40文字で自然な日本語\n- 出力はJSONのitems配列のみ（各要素は {"text": "..."} ）`;
 
-      const userPrompt = `キーワード: ${keyword}\n既存文:\n${compactList}\n\n要件:\n- 重複を避け、情報密度を上げる\n- 曖昧表現を数値に置換\n- 誤解を招く表現は修正\n- 同じ項目数で返す`;
+      const userPrompt = `キーワード: ${keyword}\n既存文:\n${compactList}\n\n要件:\n- 重複を避け、情報密度を上げる\n- 曖昧表現を数値に置換\n- 文末に1アクションを追加（「→水500ml」など）\n- 誤解を招く表現は修正\n- 同じ項目数で返す`;
 
       const response = await fetch('/api/openai/chat/completions', {
         method: 'POST',
