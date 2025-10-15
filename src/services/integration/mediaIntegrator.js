@@ -170,7 +170,7 @@ class MediaIntegrator {
   // 改良されたキーワード生成
   async generateKeywordFromText(text, type = 'general', variation = 0) {
     try {
-      console.log('🔄 改良版キーワード生成開始:', text);
+      // 改良版キーワード生成（ログ非表示）
       
       // 空文字チェック
       if (!text || text.trim().length === 0) {
@@ -184,7 +184,7 @@ class MediaIntegrator {
         variation: variation
       });
       
-      console.log('✅ 改良版翻訳完了:', translated);
+      // 翻訳完了（ログ非表示）
       return translated;
 
     } catch (error) {

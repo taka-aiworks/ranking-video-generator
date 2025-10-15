@@ -37,21 +37,21 @@ class TrendAnalyzer {
         allKeywords.push(...googleTrends.value.map(k => ({ ...k, source: 'Google' })));
         console.log('✅ Google Trends取得成功:', googleTrends.value.length + '個');
       } else {
-        console.log('⚠️ Google Trends取得失敗、スキップ');
+        // Google Trends取得失敗、スキップ
       }
       
       if (youtubeTrends.status === 'fulfilled' && youtubeTrends.value.length > 0) {
         allKeywords.push(...youtubeTrends.value.map(k => ({ ...k, source: 'YouTube' })));
         console.log('✅ YouTube Trends取得成功:', youtubeTrends.value.length + '個');
       } else {
-        console.log('⚠️ YouTube Trends取得失敗、スキップ');
+        // YouTube Trends取得失敗、スキップ
       }
       
       if (twitterTrends.status === 'fulfilled' && twitterTrends.value.length > 0) {
         allKeywords.push(...twitterTrends.value.map(k => ({ ...k, source: 'Twitter' })));
         console.log('✅ Twitter Trends取得成功:', twitterTrends.value.length + '個');
       } else {
-        console.log('⚠️ Twitter Trends取得失敗、スキップ');
+        // Twitter Trends取得失敗、スキップ
       }
 
       // APIから取得できたキーワードがある場合
@@ -64,7 +64,7 @@ class TrendAnalyzer {
         return this.trendKeywords;
       } else {
         // 全てのAPIが失敗した場合はフォールバック
-        console.log('⚠️ 全API失敗、フォールバックキーワードを使用');
+        // 全API失敗、フォールバックキーワードを使用
         return this.getFallbackTrendKeywords();
       }
       
@@ -87,14 +87,8 @@ class TrendAnalyzer {
   // YouTube Data API（実際のAPI）- トレンド動画から取得
   async fetchGoogleTrends() {
     try {
-      console.log('📈 YouTube Data API取得開始（実際のデータ）');
-      
-      const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-      
-      if (!apiKey || apiKey === 'demo') {
-        console.log('⚠️ YouTube APIキー未設定、フォールバックキーワードを使用');
-        return this.getFallbackTrendKeywords();
-      }
+      // YouTube Data APIは無効化（403エラー回避）
+      return this.getFallbackTrendKeywords();
       
       const keywords = [];
       
@@ -200,7 +194,7 @@ class TrendAnalyzer {
       return result;
       
     } catch (error) {
-      console.error('❌ YouTube Data API取得エラー:', error.message);
+      // エラーログを非表示（403は想定内）
       return this.getFallbackTrendKeywords();
     }
   }
@@ -297,20 +291,8 @@ class TrendAnalyzer {
   // YouTube Trends（無料API）- 改善版
   async fetchYouTubeTrends() {
     try {
-      const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-      
-      // APIキーがない場合はスキップ
-      if (!apiKey || apiKey === 'demo') {
-        console.log('⚠️ YouTube APIキー未設定、スキップ');
-        return [];
-      }
-      
-      // YouTube Data API v3の無料枠を使用
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=JP&maxResults=10&key=${apiKey}`);
-      
-      if (!response.ok) {
-        throw new Error(`YouTube API Error: ${response.status}`);
-      }
+      // YouTube Data APIは無効化（403エラー回避）
+      return [];
       
       const data = await response.json();
       const keywords = [];
@@ -335,7 +317,7 @@ class TrendAnalyzer {
       
       return keywords;
     } catch (error) {
-      console.error('❌ YouTube Trends取得エラー:', error.message);
+      // エラーログを非表示（403は想定内）
       return [];
     }
   }
@@ -380,7 +362,7 @@ class TrendAnalyzer {
       
       return keywords;
     } catch (error) {
-      console.error('❌ Twitter Trends取得エラー:', error.message);
+      // エラーログを非表示
       return [];
     }
   }

@@ -12,7 +12,7 @@ class TranslationService {
 
   // メイン機能: 簡潔なキーワード生成
   async translateForImageSearch(text, options = {}) {
-    console.log('🌐 動的翻訳開始:', text);
+    // 動的翻訳（ログ非表示）
     
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       console.log('⚠️ 空テキスト - フォールバック使用');
@@ -21,69 +21,26 @@ class TranslationService {
 
     // 🚨 修正：正しい日本語判定（Unicode範囲）
     const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text);
-    console.log('🔍 日本語判定:', {
-      text: text,
-      hasJapanese: hasJapanese,
-      textLength: text.length
-    });
 
     // 英語の場合はそのまま返す（二重翻訳回避）
     if (!hasJapanese) {
-      console.log('📝 英語テキストそのまま使用:', text);
       return this.shortenKeyword(text);
     }
 
     const cacheKey = `${text}_${options.type || 'default'}`;
     if (this.cache.has(cacheKey)) {
-      console.log('📋 キャッシュから取得:', this.cache.get(cacheKey));
       return this.cache.get(cacheKey);
     }
 
     try {
-      console.log('🤖 OpenAI翻訳開始:', text);
-      
-      // 修正されたプロンプト（簡潔なキーワード生成）
-      const response = await openaiService.createCompletion({
-        model: 'gpt-3.5-turbo',
-        messages: [{
-          role: 'user',
-          content: `日本語「${text}」を画像検索用の英語キーワード（3-4単語）に翻訳してください。
-
-条件:
-- リストや説明文ではなく、単一のキーワードのみ
-- 3-4単語の簡潔な英語
-- 写真として存在しそうな内容
-- YouTube、矢印、ロゴは避ける
-
-回答例: "family conversation children"`
-        }],
-        max_tokens: 50,
-        temperature: 0.3
-      });
-
-      let translated = response.choices[0].message.content.trim()
-        .replace(/^(キーワード:|Keywords?:|翻訳:|訳:)/i, '')
-        .replace(/^["「『]|["」』]$/g, '')
-        .replace(/\n.*$/g, '') // 最初の行のみ使用
-        .trim()
-        .toLowerCase();
-      
-      // さらに短縮
-      translated = this.shortenKeyword(translated);
-      
-      // 空文字チェック
-      if (!translated || translated.trim().length === 0) {
-        console.warn('⚠️ 翻訳結果が空文字 - フォールバック使用');
-        translated = this.getFallbackTranslation(text);
-      }
-      
+      // 🚨 OpenAI翻訳を完全スキップ（CORS問題回避）
+      // フォールバック翻訳のみ使用
+      const translated = this.getFallbackTranslation(text);
       this.cache.set(cacheKey, translated);
-      
-      console.log('✅ 動的翻訳完了:', translated);
       return translated;
 
     } catch (error) {
-      console.warn('⚠️ 動的翻訳失敗:', error.message);
+      // 動的翻訳失敗（フォールバック使用）
       return this.getFallbackTranslation(text);
     }
   }

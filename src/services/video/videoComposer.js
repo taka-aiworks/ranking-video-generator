@@ -12,6 +12,11 @@ class VideoComposer {
     this.audioContext = null;
     this.audioBuffer = null;
     this.bgmSource = null;
+    // 🆕 ナレーション（TTS）
+    this.narrationBuffer = null;
+    this.narrationSource = null;
+    this.showDebugOverlay = false; // デフォルトはオフ
+    this._frameToggle = false; // フレーム強制更新用トグル
   }
 
   // BGM読み込み
@@ -28,6 +33,71 @@ class VideoComposer {
     }
   }
 
+  // 🆕 TTS音声読み込み
+  async loadNarration(audioUrl) {
+    try {
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext();
+      }
+      const response = await fetch(audioUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      this.narrationBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      console.log('🎤 ナレーション読み込み完了');
+    } catch (error) {
+      console.error('❌ ナレーション読み込み失敗:', error);
+      this.narrationBuffer = null;
+    }
+  }
+
+  // 🎤 全スライドの音声を結合
+  async combineAllAudios(slideAudios) {
+    try {
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext();
+      }
+      
+      console.log('🎤 音声結合開始:', slideAudios.length, '件');
+      
+      // 各音声をAudioBufferとして読み込み
+      const audioBuffers = [];
+      for (const slideAudio of slideAudios) {
+        const response = await fetch(slideAudio.url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+        audioBuffers.push(audioBuffer);
+      }
+      
+      // 全音声の合計長さを計算
+      const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+      const sampleRate = audioBuffers[0].sampleRate;
+      const numberOfChannels = audioBuffers[0].numberOfChannels;
+      
+      // 結合用のバッファを作成
+      const combinedBuffer = this.audioContext.createBuffer(
+        numberOfChannels,
+        totalLength,
+        sampleRate
+      );
+      
+      // 各チャンネルのデータを結合
+      let offset = 0;
+      for (const buffer of audioBuffers) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          const channelData = buffer.getChannelData(channel);
+          combinedBuffer.getChannelData(channel).set(channelData, offset);
+        }
+        offset += buffer.length;
+      }
+      
+      this.narrationBuffer = combinedBuffer;
+      console.log('✅ 音声結合完了:', (totalLength / sampleRate).toFixed(2), '秒');
+      
+    } catch (error) {
+      console.error('❌ 音声結合失敗:', error);
+      this.narrationBuffer = null;
+    }
+  }
+
   initCanvas(canvasRef, videoDesign) {
     console.log('🎬 Canvas初期化:', videoDesign?.title);
     
@@ -36,26 +106,43 @@ class VideoComposer {
     
     this.ctx = this.canvas.getContext('2d');
     
-    // 高解像度対応（Retina対応）
+    // 🎯 修正：pixelRatioを1に固定してスケール問題を回避
     const { width = 1080, height = 1920 } = videoDesign?.canvas || {};
-    const pixelRatio = window.devicePixelRatio || 2; // 高解像度ディスプレイ対応
+    const pixelRatio = 1; // 固定（テキスト座標のずれを防ぐ）
     
     // Canvasの実際のサイズを設定
-    this.canvas.width = width * pixelRatio;
-    this.canvas.height = height * pixelRatio;
+    this.canvas.width = width;
+    this.canvas.height = height;
     
     // CSS表示サイズを設定
     this.canvas.style.width = width + 'px';
     this.canvas.style.height = height + 'px';
     
     // 高品質描画設定
-    this.ctx.scale(pixelRatio, pixelRatio);
     this.ctx.imageSmoothingEnabled = true;
     this.ctx.imageSmoothingQuality = 'high';
     this.ctx.textRenderingOptimization = 'optimizeQuality';
     
     console.log(`✅ Canvas: ${width}x${height} (${pixelRatio}x scale)`);
     return this.canvas;
+  }
+
+  // 🆕 ナレーションをURLから読み込み（VOICEVOXのwav/webmを想定）
+  async setNarrationFromUrl(url) {
+    try {
+      if (!url) {
+        this.narrationBuffer = null;
+        return;
+      }
+      if (!this.audioContext) this.audioContext = new AudioContext();
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      this.narrationBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      console.log('🎤 ナレーション読み込み完了');
+    } catch (e) {
+      console.warn('⚠️ ナレーション読み込み失敗:', e);
+      this.narrationBuffer = null;
+    }
   }
 
   // 高品質録画開始（ビットレート/コーデック/フレームレート指定）
@@ -70,25 +157,64 @@ class VideoComposer {
       mimeTypePreferred = 'video/webm;codecs=vp9' // vp9に変更（高品質・高圧縮）
     } = options;
 
-    const canvasStream = this.canvas.captureStream(fps);
+      const canvasStream = this.canvas.captureStream(fps);
+      // ビデオトラックを保持して、後で明示的にrequestFrameできるようにする
+      this.videoTrack = canvasStream.getVideoTracks()[0];
     
-    // 🎵 BGMがある場合は音声ストリームを追加
+    // 🎵 音声ストリーム作成（BGM + ナレーションをミックス）
     let stream = canvasStream;
-    if (this.audioBuffer && this.audioContext) {
+    if (this.audioContext) {
       const audioDestination = this.audioContext.createMediaStreamDestination();
-      
-      // BGMを音声ストリームに接続
-      this.bgmSource = this.audioContext.createBufferSource();
-      this.bgmSource.buffer = this.audioBuffer;
-      this.bgmSource.loop = true;
-      this.bgmSource.connect(audioDestination);
-      
+
+      // ミキサー用ゲイン
+      const mixerGain = this.audioContext.createGain();
+      mixerGain.gain.value = 1.0;
+      mixerGain.connect(audioDestination);
+
+      // BGM接続（任意）
+      if (this.audioBuffer) {
+        this.bgmSource = this.audioContext.createBufferSource();
+        this.bgmSource.buffer = this.audioBuffer;
+        this.bgmSource.loop = true;
+        const bgmGain = this.audioContext.createGain();
+        bgmGain.gain.value = 0.25; // 低めにミックス
+        this.bgmSource.connect(bgmGain);
+        bgmGain.connect(mixerGain);
+      }
+
+      // ナレーション接続（任意）
+      if (this.narrationBuffer) {
+        console.log('🎤 ナレーション接続:', {
+          bufferLength: this.narrationBuffer.length,
+          duration: this.narrationBuffer.duration.toFixed(2) + 's',
+          sampleRate: this.narrationBuffer.sampleRate,
+          numberOfChannels: this.narrationBuffer.numberOfChannels
+        });
+        this.narrationSource = this.audioContext.createBufferSource();
+        this.narrationSource.buffer = this.narrationBuffer;
+        this.narrationSource.loop = false;
+        // 再生速度で総尺を調整（>=0.5かつ<=2.0の範囲に丸め）
+        const rate = Math.min(2.0, Math.max(0.5, options.narrationPlaybackRate || 1.0));
+        this.narrationSource.playbackRate.value = rate;
+        const narGain = this.audioContext.createGain();
+        narGain.gain.value = 1.0; // 主音量
+        this.narrationSource.connect(narGain);
+        narGain.connect(mixerGain);
+        console.log('✅ ナレーション接続完了');
+      } else {
+        console.warn('⚠️ ナレーションバッファが存在しません');
+      }
+
       // Canvasと音声を結合
       stream = new MediaStream([
         ...canvasStream.getTracks(),
         ...audioDestination.stream.getTracks()
       ]);
-      console.log('🎵 BGM付きストリーム作成完了');
+      console.log('🎧 音声ミックス済みストリーム作成完了:', {
+        videoTracks: canvasStream.getTracks().length,
+        audioTracks: audioDestination.stream.getTracks().length,
+        totalTracks: stream.getTracks().length
+      });
     }
 
     // 使用可能な mimeType を選択（高品質優先）
@@ -136,6 +262,12 @@ class VideoComposer {
       videoBitsPerSecond,
       mimeType: recorderOptions.mimeType || 'default'
     });
+    console.log('🔍 ストリーム詳細:', {
+      hasVideo: stream.getVideoTracks().length > 0,
+      hasAudio: stream.getAudioTracks().length > 0,
+      videoTrack: stream.getVideoTracks()[0]?.label || 'なし',
+      audioTrack: stream.getAudioTracks()[0]?.label || 'なし'
+    });
     
     return new Promise((resolve, reject) => {
       this.recorder.onstop = () => {
@@ -150,52 +282,56 @@ class VideoComposer {
         const url = URL.createObjectURL(videoBlob);
         
         console.log('✅ 動画ファイル作成完了:', (videoBlob.size / (1024*1024)).toFixed(2) + 'MB');
-        console.log('🎯 期待される動画時間:', actualDuration/1000 + '秒');
+        console.log('🎯 期待される動画時間:', duration/1000 + '秒');
         
         resolve({
           blob: videoBlob,
           url: url,
           size: (videoBlob.size / (1024*1024)).toFixed(2) + 'MB',
-          expectedDuration: actualDuration/1000 + '秒'
+          expectedDuration: duration/1000 + '秒'
         });
       };
       
       this.recorder.onerror = reject;
       
-      // 🎵 BGM再生開始（ストリームに含まれている場合）
+      // 🎵 音声再生開始（ストリームに含まれている場合）
       if (this.bgmSource) {
         this.bgmSource.start();
         console.log('🎵 BGM再生開始');
       }
+      if (this.narrationSource) {
+        this.narrationSource.start();
+        console.log('🎤 ナレーション再生開始');
+      }
       
       this.recorder.start(); // 🎯 デフォルト設定で開始
       
-      // 🎯 緊急修正：MediaRecorderの時間記録問題を解決
-      // 実際のスライド描画時間 + 安全マージンで正確に設定
-      const actualDuration = duration + 5000; // 5秒の安全マージン
-      
-      console.log('⏰ 録画タイマー設定:', {
-        requestedDuration: duration/1000 + 's',
-        actualDuration: actualDuration/1000 + 's',
-        safetyMargin: '5s'
-      });
-      
-      const recordingTimer = setTimeout(() => {
-        console.log('⏰ タイマー到達 - 録画停止実行');
-        
-        // 🎵 BGM停止
+      // 🕒 ナレーション終了で録画停止（完全同期）
+      if (this.narrationSource) {
+        this.narrationSource.onended = () => {
+          console.log('⏰ ナレーション終了 - 録画停止実行');
         if (this.bgmSource) {
-          this.bgmSource.stop();
+            try { this.bgmSource.stop(); } catch (_) {}
           console.log('🎵 BGM停止');
         }
-        
+          if (this.recorder && this.recorder.state === 'recording') {
+            this.recorder.stop();
+          }
+        };
+      } else {
+        // フォールバック: duration + 2s で停止
+        const fallback = setTimeout(() => {
+          console.log('⏰ フォールバック停止');
+          if (this.bgmSource) {
+            try { this.bgmSource.stop(); } catch (_) {}
+            console.log('🎵 BGM停止');
+          }
         if (this.recorder && this.recorder.state === 'recording') {
           this.recorder.stop();
         }
-      }, actualDuration);
-      
-      // タイマーIDを保存（必要に応じてクリア可能）
-      this.recordingTimer = recordingTimer;
+        }, duration + 2000);
+        this.recordingTimer = fallback;
+      }
     });
   }
 
@@ -217,40 +353,44 @@ class VideoComposer {
     
     // 🎵 BGM読み込み
     await this.loadBGM();
-    // 🎯 修正：固定時間を削除し、内容に応じた動的計算に変更
-    const baseDuration = (videoDesign.duration || 40) * 1000; // 参考値として保持
+    
+    // 🎤 全スライドの音声を結合
+    if (videoDesign.slideAudios && videoDesign.slideAudios.length > 0) {
+      await this.combineAllAudios(videoDesign.slideAudios);
+    }
 
     try {
+      // 🆕 スライドごとの音声データがあるかチェック
+      const hasSlideAudios = videoDesign.slideAudios && Array.isArray(videoDesign.slideAudios) && videoDesign.slideAudios.length > 0;
+      
+      if (!hasSlideAudios) {
+        throw new Error('スライドごとの音声データが見つかりません。先に音声を生成してください。');
+      }
+      
+      console.log('🎤 スライド音声データ:', videoDesign.slideAudios.map((a, i) => `[${i+1}] ${a.type}: ${a.duration?.toFixed(2)}s`));
+
+      // 🛡️ 事前に各スライドの表示時間を正規化（NaN/Infinity/極端値を防ぐ）
+      const MIN_SEC = 1.2;
+      const normalizedSlideAudios = videoDesign.slideAudios.map((a, i) => {
+        const d = Number(a.duration);
+        const finite = Number.isFinite(d) && d > 0 ? d : 3;
+        const clamped = Math.max(MIN_SEC, finite); // 上限は設けず、音声長に合わせる
+        if (!Number.isFinite(d) || d <= 0 || clamped !== d && d !== clamped) {
+          console.warn(`⏱️ スライド${i+1}のdurationを補正: original=${d}, used=${clamped}`);
+        }
+        return { ...a, duration: clamped };
+      });
+
       // 🎯 修正：先に時間計算を行う
       let currentSlideIndex = 0;
-      const itemSlides = videoDesign.items.length * 3;
-      const totalSlides = 1 + itemSlides + 1;
+      const totalSlides = normalizedSlideAudios.length;
       
       // 🎯 実際の表示時間を記録
       const slideTimings = [];
       const sessionStartTime = Date.now();
       
-      // 🎯 修正：ContentAnalyzerの計算時間を使用
-      const requestedDuration = videoDesign.duration || 30; // ContentAnalyzerから取得した時間
-      
-      // スライド時間を動的に計算（要求時間に応じて調整）
-      const titleMs = Math.max(4000, Math.floor(requestedDuration * 1000 * 0.08)); // 8%をタイトルに
-      const summaryMs = Math.max(10000, Math.floor(requestedDuration * 1000 * 0.18)); // 18%をまとめに（チャンネル登録時間をさらに確保）
-      const remainingMs = (requestedDuration * 1000) - titleMs - summaryMs;
-      const perItemSlideMs = Math.max(3000, Math.floor(remainingMs / itemSlides)); // 残り時間を項目スライドに分配
-      
-      // 実際の動画時間を計算
-      const totalDuration = titleMs + (perItemSlideMs * itemSlides) + summaryMs;
-      
-      // 🎯 修正：LoopControllerを無効化（内容完了後の自然な停止を優先）
-      // loopController.startSession(
-      //   (totalDuration / 1000) + 25,
-      //   this.recorder, 
-      //   (reason) => {
-      //     console.error('🚨 強制停止:', reason);
-      //     throw new Error(`録画が強制停止されました: ${reason}`);
-      //   }
-      // );
+      // 🎯 修正：音声の実際の長さに基づいて動画時間を設定
+      const totalDuration = normalizedSlideAudios.reduce((sum, audio) => sum + (audio.duration * 1000 || 0), 0);
       
       console.log('🔴 録画処理開始');
       // 🎯 修正：実際の動画時間で録画開始
@@ -259,86 +399,91 @@ class VideoComposer {
       
       console.log('📋 詳細スライド計画:', {
         totalSlides: totalSlides,
-        calculatedDuration: totalDuration / 1000 + 's',
-        titleMs: titleMs + 'ms (' + (titleMs/1000) + 's)',
-        perItemSlideMs: perItemSlideMs + 'ms (' + (perItemSlideMs/1000) + 's)',
-        summaryMs: summaryMs + 'ms (' + (summaryMs/1000) + 's)',
-        itemSlides: itemSlides,
-        itemsCount: videoDesign.items.length,
-        breakdown: {
-          title: titleMs/1000 + 's',
-          items: (perItemSlideMs * itemSlides)/1000 + 's (' + itemSlides + ' slides)',
-          summary: summaryMs/1000 + 's',
-          total: totalDuration/1000 + 's'
+        calculatedDuration: (totalDuration / 1000).toFixed(2) + 's',
+        breakdown: normalizedSlideAudios.map((a, i) => `[${i+1}] ${a.type}: ${(a.duration || 0).toFixed(2)}s`)
+      });
+      
+      // 🕒 オーディオクロックに同期した描画
+      const narrationStartTime = this.audioContext ? this.audioContext.currentTime : 0;
+      const waitUntilAudioTime = async (targetSec) => {
+        if (!this.audioContext) {
+          await this.sleep(targetSec * 1000);
+          return;
         }
-      });
-      
-      // タイトルスライド
-      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] タイトルスライド描画`);
-      const titleImage = this.getSlideImage(slideImages, currentSlideIndex);
-      this.renderTitleSlide(videoDesign, titleImage);
-      
-      const titleStartTime = Date.now();
-      await this.sleep(titleMs);
-      slideTimings.push({
-        slide: 'title',
-        planned: titleMs,
-        actual: Date.now() - titleStartTime
-      });
-      currentSlideIndex++;
+        return new Promise((resolve) => {
+          const tick = () => {
+            const t = this.audioContext.currentTime - narrationStartTime;
+            if (t >= targetSec) return resolve();
+            requestAnimationFrame(tick);
+          };
+          tick();
+        });
+      };
 
-      // 各項目のスライド
-      for (let i = 0; i < videoDesign.items.length; i++) {
-        const item = videoDesign.items[i];
-        
-        for (let j = 0; j < 3; j++) {
-          console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] 項目${i+1} サブ${j+1} 描画開始`);
-          
-          const itemImage = this.getSlideImage(slideImages, currentSlideIndex);
-          console.log(`🖼️ 項目${i+1}-${j+1}画像:`, itemImage ? '画像あり' : '画像なし');
-          
-          this.renderItemSlide(item, i + 1, j, itemImage);
-          console.log(`✅ 項目${i+1}-${j+1}描画完了`);
-          
-          const itemStartTime = Date.now();
-          console.log(`⏰ 項目${i+1}-${j+1}表示開始:`, perItemSlideMs + 'ms');
-          await this.sleep(perItemSlideMs);
-          console.log(`✅ 項目${i+1}-${j+1}表示完了`);
-          
-          slideTimings.push({
-            slide: `item${i+1}_${j+1}`,
-            planned: perItemSlideMs,
-            actual: Date.now() - itemStartTime
-          });
-          currentSlideIndex++;
-          
+      let elapsed = 0;
+      const frameLoopIntervalMs = Math.round(1000 / 30);
+      const pumpFrame = () => {
+        try { this.videoTrack && this.videoTrack.requestFrame && this.videoTrack.requestFrame(); } catch (_) {}
+      };
+      for (let i = 0; i < normalizedSlideAudios.length; i++) {
+        const slideAudio = normalizedSlideAudios[i];
+        const slideDuration = slideAudio.duration;
+
+        console.log(`📍 [${i+1}/${totalSlides}] ${slideAudio.type}スライド描画開始`);
+        const slideImage = this.getSlideImage(slideImages, i);
+        if (slideAudio.type === 'title') {
+          this.renderTitleSlide(videoDesign, slideImage);
+          this.drawDebugOverlay(i+1, totalSlides);
+          this.nudgeFrame();
+          await this.flushFrame();
+        } else if (slideAudio.type === 'item') {
+          const itemIndex = i - 1;
+          const item = videoDesign.items[itemIndex];
+          if (item) this.renderItemSlide(item, itemIndex + 1, 0, slideImage);
+          this.drawDebugOverlay(i+1, totalSlides);
+          this.nudgeFrame();
+          await this.flushFrame();
+        } else if (slideAudio.type === 'summary') {
+          this.renderSummarySlide(videoDesign, slideImage);
+          this.drawDebugOverlay(i+1, totalSlides);
+          this.nudgeFrame();
+          await this.flushFrame();
+        }
+
+        console.log(`🔇 ${slideAudio.type}の音声: ${slideDuration.toFixed(2)}秒（結合済み）`);
+        console.log(`✅ ${slideAudio.type}描画完了`);
+
+        const target = elapsed + slideDuration;
+        console.log(`⏰ ${slideAudio.type}表示（オーディオ同期）: ${slideDuration.toFixed(2)}秒 → 累計${target.toFixed(2)}秒`);
+        // 表示中は定期的にフレーム再描画 + 発行
+        const slideImageLoop = slideImage; // 再利用
+        while (true) {
+          // 再描画（同じスライドを毎フレーム）
+          if (slideAudio.type === 'title') {
+            this.renderTitleSlide(videoDesign, slideImageLoop);
+          } else if (slideAudio.type === 'item') {
+            const itemIndex = i - 1;
+            const item = videoDesign.items[itemIndex];
+            if (item) this.renderItemSlide(item, itemIndex + 1, 0, slideImageLoop);
+          } else if (slideAudio.type === 'summary') {
+            this.renderSummarySlide(videoDesign, slideImageLoop);
+          }
+          this.nudgeFrame();
+          pumpFrame();
+          await new Promise(r => setTimeout(r, frameLoopIntervalMs));
+          if (!this.audioContext) break;
+          const t = this.audioContext.currentTime - narrationStartTime;
+          if (t >= target) break;
+        }
+
+        slideTimings.push({ slide: slideAudio.type, planned: slideDuration * 1000, actual: slideDuration * 1000 });
           if (onProgress) {
-            const progress = (currentSlideIndex / totalSlides) * 100;
+          const progress = ((i + 1) / totalSlides) * 100;
             onProgress(Math.round(progress));
             console.log('📊 進捗:', Math.round(progress) + '%');
           }
-        }
+        elapsed = target;
       }
-
-      // まとめスライド
-      console.log(`📍 [${currentSlideIndex+1}/${totalSlides}] まとめスライド描画開始`);
-      const summaryImage = this.getSlideImage(slideImages, currentSlideIndex);
-      console.log('🖼️ まとめ画像取得完了:', summaryImage ? '画像あり' : '画像なし');
-      
-      console.log('🎨 まとめスライド描画実行中...');
-      this.renderSummarySlide(videoDesign, summaryImage);
-      console.log('✅ まとめスライド描画完了');
-      
-      const summaryStartTime = Date.now();
-      console.log('⏰ まとめスライド表示開始:', summaryMs + 'ms');
-      await this.sleep(summaryMs);
-      console.log('✅ まとめスライド表示完了');
-      
-      slideTimings.push({
-        slide: 'summary',
-        planned: summaryMs,
-        actual: Date.now() - summaryStartTime
-      });
       
       console.log('🏁 全スライド描画完了');
       
@@ -515,16 +660,20 @@ class VideoComposer {
     }
   }
 
-  // 項目スライド描画
+  // 項目スライド描画（🆕 j=0で全内容表示に対応）
   renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
-    this.drawNumberBadge(itemNumber, 100, 120, 50);
+    // 番号バッジは不要なのでコメントアウト
+    // this.drawNumberBadge(itemNumber, 100, 120, 50);
     
-    const itemTitle = item.name || item.title || `項目${itemNumber}`;
-    const mainContent = item.content?.main || item.description || '';
-    const details = item.content?.details || '';
+    // 新フォーマット: item.text（自然な文章）
+    // 旧フォーマット: item.name + item.main
+    const itemText = item.text || '';
+    const itemTitle = item.name || item.title || `項目`;
+    const mainContent = item.main || item.content?.main || item.description || '';
+    const details = item.details || item.content?.details || '';
     
     const textAreaHeight = this.canvas.height / 2;
     const imageX = this.canvas.width * 0.1;
@@ -533,14 +682,36 @@ class VideoComposer {
     const imageHeight = this.canvas.height / 2;
     const textMaxWidth = Math.floor(this.canvas.width * 0.85);
     
+    // 🆕 j=0の場合、全内容を表示
     if (subSlideIndex === 0) {
-      this.drawWrappedText(itemTitle, centerX, textAreaHeight * 0.5, 60, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.6));
-      if (slideImage?.optimized?.canvas) {
-        console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
-        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 50, imageWidth, imageHeight - 100);
+      if (itemText) {
+        // 新フォーマット: item.text（自然な文章）を大きく表示
+        this.drawWrappedText(itemText, centerX, 350, 65, '#000000', { bold: true }, textMaxWidth, 400);
+        
+        // 詳細（あれば下部に）
+        if (details) {
+          this.drawWrappedText(details, centerX, 700, 35, '#555555', {}, textMaxWidth, 200);
+        }
       } else {
-        console.log(`⚠️ 項目${itemNumber}-${subSlideIndex}プレースホルダー使用`);
-        this.drawImagePlaceholder(imageX, imageY + 50, imageWidth, imageHeight - 100, `${itemTitle}のイメージ`);
+        // 旧フォーマット: title + main + details
+        this.drawWrappedText(itemTitle, centerX, 250, 55, '#000000', { bold: true }, textMaxWidth, 200);
+        
+        if (mainContent) {
+          this.drawWrappedText(mainContent, centerX, 450, 38, '#333333', {}, textMaxWidth, 150);
+        }
+        
+        if (details) {
+          this.drawWrappedText(details, centerX, 650, 35, '#555555', {}, textMaxWidth, 250);
+        }
+      }
+      
+      // 画像は下部に小さめに配置
+      if (slideImage?.optimized?.canvas) {
+        console.log(`✅ 項目${itemNumber}画像描画:`, slideImage.keyword);
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 100, imageWidth, imageHeight - 150);
+      } else {
+        console.log(`⚠️ 項目${itemNumber}プレースホルダー使用`);
+        this.drawImagePlaceholder(imageX, imageY + 100, imageWidth, imageHeight - 150, `${itemTitle}のイメージ`);
       }
     } else if (subSlideIndex === 1 && mainContent) {
       this.drawWrappedText(itemTitle, centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.4));
@@ -598,6 +769,40 @@ class VideoComposer {
       console.log('⚠️ まとめ画像プレースホルダー使用');
       this.drawImagePlaceholder(imageX, imageY, imageWidth, imageHeight, 'いいね＆チャンネル登録');
     }
+  }
+
+  // 🧪 デバッグ用オーバーレイ
+  drawDebugOverlay(slideIndex, totalSlides) {
+    if (!this.showDebugOverlay || !this.ctx || !this.canvas) return;
+    const text = `SLIDE ${slideIndex}/${totalSlides}`;
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.6;
+    this.ctx.fillStyle = '#000000';
+    this.ctx.fillRect(this.canvas.width - 320, 20, 300, 70);
+    this.ctx.globalAlpha = 1.0;
+    this.ctx.fillStyle = '#ffffff';
+    // フォント取得関数が未定義でも安全に動くよう、固定フォントを使用
+    this.ctx.font = 'bold 32px sans-serif';
+    this.ctx.textAlign = 'right';
+    this.ctx.fillText(text, this.canvas.width - 30, 70);
+    this.ctx.restore();
+  }
+
+  // 🖼️ フレームフラッシュ（Canvasの描画内容を確実にストリームへ反映）
+  async flushFrame() {
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => requestAnimationFrame(r));
+  }
+
+  // 🎯 ほぼ不可視の1pxを書き換えてフレーム差分を強制発生
+  nudgeFrame() {
+    if (!this.ctx || !this.canvas) return;
+    this._frameToggle = !this._frameToggle;
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.003; // 肉眼では分からない透明度
+    this.ctx.fillStyle = this._frameToggle ? '#000' : '#111';
+    this.ctx.fillRect(0, 0, 1, 1);
+    this.ctx.restore();
   }
 
   // 通常の動画生成（画像なし）
@@ -670,7 +875,8 @@ class VideoComposer {
   // 折り返しテキスト描画（キャンバス幅に応じて自動改行/縮小）
   drawWrappedText(text, x, y, fontSize = 32, color = '#000000', options = {}, maxWidth, maxHeight) {
     this.ctx.save();
-    const weight = options.bold ? 'bold' : 'normal';
+    // 全てのテキストを太字に統一
+    const weight = '900'; // 超太字
     this.ctx.fillStyle = color;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
@@ -684,7 +890,7 @@ class VideoComposer {
     const paragraphs = (text || '').toString().split('\n');
 
     const wrapWithFont = (size) => {
-      this.ctx.font = `${weight} ${size}px Arial`;
+      this.ctx.font = `${weight} ${size}px Arial, "Noto Sans JP", sans-serif`;
       const computedLines = [];
       const space = ' ';
       paragraphs.forEach(p => {

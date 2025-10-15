@@ -22,7 +22,19 @@ export default defineConfig(({ command, mode }) => {
     // 開発サーバー設定
     server: {
       port: 5173,
-      open: true
+      open: true,
+      proxy: {
+        '/api/openai': {
+          target: 'https://api.openai.com/v1',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/openai/, ''),
+          configure: (proxy, options) => {
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              proxyReq.setHeader('Authorization', `Bearer ${env.VITE_OPENAI_API_KEY}`);
+            });
+          }
+        }
+      }
     },
     
     // 環境変数ファイルの場所を明示

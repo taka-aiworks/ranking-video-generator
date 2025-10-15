@@ -19,6 +19,12 @@ class ImageService {
       'arrow pointing', 'red button', 'navigation arrow', 'ui element'
     ];
 
+    // 🆕 性教育系で避けるワード（露骨表現の回避）
+    this.sexEdAvoid = [
+      'nsfw', 'nude', 'nudity', 'explicit', 'erotic', 'porn', 'xxx',
+      'genital', 'breast', 'nipple', 'areola', 'butt', 'ass', 'vulva', 'penis', 'vagina'
+    ];
+
     if (typeof window !== 'undefined') {
       window.imageService = this;
     }
@@ -91,6 +97,12 @@ class ImageService {
       return 'thumbs up positive';
     }
     
+    // 🆕 性教育系の安全ワード運用（抽象化）
+    const isSexEd = /性教育|妊娠|受精|排卵|基礎体温|精子|卵子|生殖|避妊|夫婦生活|fertility|ovulation|sperm|semen|reproductive|contraception/i.test(keyword);
+    if (isSexEd) {
+      return 'health lifestyle couple wellness reproductive health education';
+    }
+
     // 英語の場合は翻訳せずにそのまま使用（二重翻訳回避）
     const hasJapanese = /[ひらがなカタカナ漢字]/.test(keyword);
     if (!hasJapanese) {
@@ -259,8 +271,16 @@ class ImageService {
 
   // 画像検索API呼び出し
   async searchImages(query, options = {}) {
+    // 🆕 露骨ワードの除去
+    let safeQuery = query || '';
+    this.sexEdAvoid.forEach(bad => {
+      if (safeQuery.toLowerCase().includes(bad)) {
+        safeQuery = safeQuery.replace(new RegExp(bad, 'ig'), '');
+      }
+    });
+
     const params = new URLSearchParams({
-      query: query,
+      query: safeQuery,
       client_id: this.apiKey,
       per_page: options.per_page || 1,
       orientation: options.orientation || 'landscape',
