@@ -531,6 +531,7 @@ const SimpleVideoGenerator = () => {
 
       // 目標尺に合わせてナレーション再生速度を微調整（±15%）
       const totalSec = (audioEnhancedDesign.slideAudios || []).reduce((s,a)=> s + (a.duration || 0), 0);
+      const actualDuration = Math.round(totalSec);
       const targetSec = format === 'short' ? 30 : format === 'medium' ? 60 : totalSec;
       const playbackRate = Math.min(1.15, Math.max(0.85, totalSec / Math.max(10, targetSec)));
 
@@ -540,19 +541,22 @@ const SimpleVideoGenerator = () => {
 
         audioEnhancedDesign.slideImages || {},
 
-        (videoProgress) => setProgress(60 + (videoProgress * 0.35)),
+        (videoProgress) => {
+          setProgress(60 + (videoProgress * 0.35));
+          // 進捗に応じて実際の時間を表示
+          const currentTime = Math.round(totalSec * (videoProgress / 100));
+          setStatus(`🎬 動画生成中... ${currentTime}/${actualDuration}秒`);
+        },
 
         { narrationPlaybackRate: playbackRate }
 
       );
-
-
-
+      
       const result = {
 
         title: audioEnhancedDesign.title,
 
-        duration: `${audioEnhancedDesign.duration}秒`,
+        duration: `${actualDuration}秒`,
 
         format: `${audioEnhancedDesign.canvas.width}x${audioEnhancedDesign.canvas.height}`,
 
