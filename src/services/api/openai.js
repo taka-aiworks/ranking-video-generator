@@ -504,69 +504,8 @@ class OpenAIService {
 
   // クリックされやすい日本語タイトル生成（オフライン用簡易版）
   generateClickableTitle(keyword, category) {
-    const base = keyword.replace(/について|とは/g, '').trim();
-    
-    // カテゴリー別の自然なタイトルパターン
-    const categoryPatterns = {
-      sexed: [
-        `${base}について知っておきたいこと`,
-        `${base}の正しい知識`,
-        `${base}で気をつけるべきポイント`,
-        `${base}の基礎知識`,
-        `${base}の真実`
-      ],
-      health: [
-        `${base}の効果的な方法`,
-        `${base}を始める前に知っておくこと`,
-        `${base}の基本とコツ`,
-        `${base}で結果を出す方法`,
-        `${base}の正しいやり方`
-      ],
-      lifestyle: [
-        `${base}のコツとポイント`,
-        `${base}を上手にする方法`,
-        `${base}の基本`,
-        `${base}で生活を改善する`,
-        `${base}の実践法`
-      ],
-      money: [
-        `${base}の始め方`,
-        `${base}で失敗しない方法`,
-        `${base}の基本知識`,
-        `${base}を安全に始める`,
-        `${base}のポイント`
-      ],
-      skill: [
-        `${base}の学習方法`,
-        `${base}を効率的に習得する`,
-        `${base}の基礎から応用まで`,
-        `${base}で上達するコツ`,
-        `${base}の勉強法`
-      ],
-      product: [
-        `${base}の選び方`,
-        `${base}の比較と評価`,
-        `${base}の特徴と使い方`,
-        `${base}のメリット・デメリット`,
-        `${base}を選ぶポイント`
-      ]
-    };
-    
-    // カテゴリー固有のパターンがあればそれを使う
-    if (categoryPatterns[category]) {
-      const patterns = categoryPatterns[category];
-      return patterns[base.length % patterns.length];
-    }
-    
-    // デフォルトパターン（自然で分かりやすい）
-    const patterns = [
-      `${base}の基本知識`,
-      `${base}について知っておくこと`,
-      `${base}のポイント`,
-      `${base}の始め方`,
-      `${base}で失敗しない方法`
-    ];
-    return patterns[base.length % patterns.length];
+    // シンプルにキーワードベースのタイトルを返す（AIが自由に生成する）
+    return `${keyword}について`;
   }
 
   // 後方互換性
