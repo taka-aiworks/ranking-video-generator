@@ -504,8 +504,8 @@ class OpenAIService {
 
   // クリックされやすい日本語タイトル生成（オフライン用簡易版）
   generateClickableTitle(keyword, category) {
-    // シンプルにキーワードベースのタイトルを返す（AIが自由に生成する）
-    return `${keyword}について`;
+    // シンプルにキーワードをそのまま返す（AIが自由に生成する）
+    return keyword;
   }
 
   // 後方互換性
