@@ -548,7 +548,7 @@ const SimpleVideoGenerator = () => {
 
         audioEnhancedDesign,
 
-        audioEnhancedDesign.slideImages || {},
+        slideImages || {},
 
         (videoProgress) => {
           setProgress(60 + (videoProgress * 0.35));
