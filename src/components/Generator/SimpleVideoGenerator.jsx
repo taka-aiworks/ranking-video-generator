@@ -143,13 +143,13 @@ const SimpleVideoGenerator = () => {
 
     try {
 
-      console.log('📈 トレンドキーワード取得開始');
+      // console.debug('📈 トレンドキーワード取得開始');
 
       const keywords = await trendAnalyzer.fetchTrendKeywords();
 
       setTrendKeywords(keywords);
 
-      console.log('📈 トレンドキーワード取得完了:', keywords.length + '個');
+      // console.debug('📈 トレンドキーワード取得完了:', keywords.length + '個');
 
     } catch (error) {
 

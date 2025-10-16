@@ -7,7 +7,7 @@ class TrendAnalyzer {
     this.lastUpdate = 0;
     this.updateInterval = 24 * 60 * 60 * 1000; // 24時間
     
-    console.log('📈 無料トレンド分析サービス初期化完了');
+    // console.log('📈 無料トレンド分析サービス初期化完了');
   }
 
   // 実際のトレンドキーワードを取得
@@ -17,11 +17,11 @@ class TrendAnalyzer {
       
       // キャッシュチェック（24時間以内なら再利用）
       if (this.trendKeywords.length > 0 && (now - this.lastUpdate) < this.updateInterval) {
-        console.log('📈 キャッシュからトレンドキーワード取得');
+        // console.debug('📈 キャッシュからトレンドキーワード取得');
         return this.trendKeywords;
       }
 
-      console.log('📈 実際のトレンドキーワード取得開始');
+      // console.debug('📈 実際のトレンドキーワード取得開始');
       
       // 複数の無料APIからトレンドキーワードを取得（タイムアウト付き）
       const [googleTrends, youtubeTrends, twitterTrends] = await Promise.allSettled([
@@ -35,21 +35,21 @@ class TrendAnalyzer {
       
       if (googleTrends.status === 'fulfilled' && googleTrends.value.length > 0) {
         allKeywords.push(...googleTrends.value.map(k => ({ ...k, source: 'Google' })));
-        console.log('✅ Google Trends取得成功:', googleTrends.value.length + '個');
+        // console.debug('✅ Google Trends取得成功:', googleTrends.value.length + '個');
       } else {
         // Google Trends取得失敗、スキップ
       }
       
       if (youtubeTrends.status === 'fulfilled' && youtubeTrends.value.length > 0) {
         allKeywords.push(...youtubeTrends.value.map(k => ({ ...k, source: 'YouTube' })));
-        console.log('✅ YouTube Trends取得成功:', youtubeTrends.value.length + '個');
+        // console.debug('✅ YouTube Trends取得成功:', youtubeTrends.value.length + '個');
       } else {
         // YouTube Trends取得失敗、スキップ
       }
       
       if (twitterTrends.status === 'fulfilled' && twitterTrends.value.length > 0) {
         allKeywords.push(...twitterTrends.value.map(k => ({ ...k, source: 'Twitter' })));
-        console.log('✅ Twitter Trends取得成功:', twitterTrends.value.length + '個');
+        // console.debug('✅ Twitter Trends取得成功:', twitterTrends.value.length + '個');
       } else {
         // Twitter Trends取得失敗、スキップ
       }
@@ -60,7 +60,7 @@ class TrendAnalyzer {
         this.trendKeywords = uniqueKeywords.slice(0, 20); // 上位20個
         this.lastUpdate = now;
         
-        console.log('📈 APIからトレンドキーワード取得完了:', this.trendKeywords.length + '個');
+        // console.debug('📈 APIからトレンドキーワード取得完了:', this.trendKeywords.length + '個');
         return this.trendKeywords;
       } else {
         // 全てのAPIが失敗した場合はフォールバック
@@ -231,7 +231,7 @@ class TrendAnalyzer {
   parseGoogleTrendsRSS(text) {
     const keywords = [];
     
-    console.log('📊 RSS解析開始、テキスト長:', text.length);
+    // console.debug('📊 RSS解析開始、テキスト長:', text.length);
     
     // 複数のパターンでタイトルを抽出
     const patterns = [
@@ -244,7 +244,7 @@ class TrendAnalyzer {
     
     patterns.forEach((pattern, index) => {
       const matches = text.match(pattern);
-      console.log(`📊 パターン${index + 1} マッチ数:`, matches ? matches.length : 0);
+      // console.debug(`📊 パターン${index + 1} マッチ数:`, matches ? matches.length : 0);
       
       if (matches) {
         matches.forEach((match, matchIndex) => {
@@ -256,7 +256,7 @@ class TrendAnalyzer {
             title = match.replace(/<title>(.*?)<\/title>/, '$1');
           }
           
-          console.log(`📊 抽出されたタイトル${matchIndex + 1}:`, title);
+          // console.debug(`📊 抽出されたタイトル${matchIndex + 1}:`, title);
           
           if (title && 
               title !== 'Daily Search Trends' && 
@@ -277,14 +277,14 @@ class TrendAnalyzer {
                 color: 'bg-red-500/20 border-red-400/30 text-red-300',
                 score: Math.floor(Math.random() * 3) + 8 // 8-10
               });
-              console.log(`✅ キーワード追加:`, title);
+              // console.debug(`✅ キーワード追加:`, title);
             }
           }
         });
       }
     });
     
-    console.log('📊 最終キーワード数:', keywords.length);
+    // console.debug('📊 最終キーワード数:', keywords.length);
     return keywords.slice(0, 15); // 最大15個
   }
 
@@ -329,7 +329,7 @@ class TrendAnalyzer {
       
       // APIキーがない場合はスキップ
       if (!bearerToken || bearerToken === 'demo') {
-        console.log('⚠️ Twitter APIキー未設定、スキップ');
+      // console.warn('⚠️ Twitter APIキー未設定、スキップ');
         return [];
       }
       
@@ -391,7 +391,7 @@ class TrendAnalyzer {
 
   // フォールバック用のキーワード（強化版）
   getFallbackTrendKeywords() {
-    console.log('📈 フォールバックキーワードを使用');
+      // console.debug('📈 フォールバックキーワードを使用');
     return [
       // 超高トレンド
       { keyword: '副業の始め方', trend: '🔥', color: 'bg-red-500/20 border-red-400/30 text-red-300', score: 9, source: 'フォールバック' },
@@ -549,7 +549,7 @@ class TrendAnalyzer {
         return this.cache.get(cacheKey);
       }
 
-      console.log('📈 無料トレンド分析開始:', keyword);
+      // console.debug('📈 無料トレンド分析開始:', keyword);
       
       // キーワードマッチング（部分一致で検索）
       let matchedData = null;
@@ -590,7 +590,7 @@ class TrendAnalyzer {
       };
       
       this.cache.set(cacheKey, result);
-      console.log('📈 無料トレンド分析完了:', result);
+      // console.debug('📈 無料トレンド分析完了:', result);
       
       return result;
     } catch (error) {
@@ -608,7 +608,7 @@ class TrendAnalyzer {
   // 無料関連キーワード生成
   async generateRelatedKeywords(baseKeyword) {
     try {
-      console.log('🔍 無料関連キーワード生成開始:', baseKeyword);
+      // console.debug('🔍 無料関連キーワード生成開始:', baseKeyword);
       
       // キーワードマッチング
       let relatedKeywords = [];
@@ -640,7 +640,7 @@ class TrendAnalyzer {
       // 最大10個に制限
       const result = relatedKeywords.slice(0, 10);
       
-      console.log('🔍 無料関連キーワード生成完了:', result);
+      // console.debug('🔍 無料関連キーワード生成完了:', result);
       return result;
     } catch (error) {
       console.error('❌ 無料関連キーワード生成エラー:', error);
@@ -651,7 +651,7 @@ class TrendAnalyzer {
   // 無料キーワード最適化提案
   async optimizeKeyword(keyword) {
     try {
-      console.log('⚡ 無料キーワード最適化開始:', keyword);
+      // console.debug('⚡ 無料キーワード最適化開始:', keyword);
       
       // 最適化パターン
       const optimizationPatterns = [
@@ -686,7 +686,7 @@ class TrendAnalyzer {
       const shuffled = optimizationPatterns.sort(() => 0.5 - Math.random());
       const result = shuffled.slice(0, 3);
       
-      console.log('⚡ 無料キーワード最適化完了:', result);
+      // console.debug('⚡ 無料キーワード最適化完了:', result);
       return result;
     } catch (error) {
       console.error('❌ 無料キーワード最適化エラー:', error);
