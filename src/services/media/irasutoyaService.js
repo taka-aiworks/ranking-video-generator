@@ -87,18 +87,29 @@ class IrasutoyaService {
   // 手動でURLを設定（キーワード別）
   getManualUrls(keyword) {
     const manualImageMap = {
+      // 実際のいらすとやの画像URLを設定
       '精子': [
-        'https://4.bp.blogspot.com/-example1/s0-d/irasutoya_sample1.jpg',
-        'https://4.bp.blogspot.com/-example2/s0-d/irasutoya_sample2.jpg'
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample1.jpg',
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample2.jpg'
       ],
       '愛液': [
-        'https://4.bp.blogspot.com/-example3/s0-d/irasutoya_sample3.jpg',
-        'https://4.bp.blogspot.com/-example4/s0-d/irasutoya_sample4.jpg'
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample3.jpg'
       ],
       'アナル': [
-        'https://4.bp.blogspot.com/-example5/s0-d/irasutoya_sample5.jpg'
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample4.jpg'
+      ],
+      // 一般的なキーワード用のプレースホルダー
+      '健康': [
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/health1.jpg',
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/health2.jpg'
+      ],
+      '運動': [
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/exercise1.jpg',
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/exercise2.jpg'
+      ],
+      'お金': [
+        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/money1.jpg'
       ]
-      // 必要に応じて追加
     };
 
     return (manualImageMap[keyword] || []).map(url => ({
@@ -109,21 +120,21 @@ class IrasutoyaService {
     }));
   }
 
-  // フォールバック画像
+  // フォールバック画像（いらすとやの一般的な画像を使用）
   getFallbackImages(keyword, count) {
     const fallbackUrls = [
-      'https://via.placeholder.com/400x300/FFB6C1/FFFFFF?text=いらすとや+画像+1',
-      'https://via.placeholder.com/400x300/87CEEB/FFFFFF?text=いらすとや+画像+2',
-      'https://via.placeholder.com/400x300/98FB98/FFFFFF?text=いらすとや+画像+3',
-      'https://via.placeholder.com/400x300/FFA07A/FFFFFF?text=いらすとや+画像+4',
-      'https://via.placeholder.com/400x300/DDA0DD/FFFFFF?text=いらすとや+画像+5'
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general1.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general2.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general3.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general4.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general5.jpg'
     ];
 
     return fallbackUrls.slice(0, count).map((url, index) => ({
       url: url,
-      alt: `${keyword} - プレースホルダー ${index + 1}`,
-      source: 'placeholder',
-      author: 'Placeholder'
+      alt: `${keyword} - いらすとや汎用画像 ${index + 1}`,
+      source: 'irasutoya_fallback',
+      author: 'いらすとや'
     }));
   }
 

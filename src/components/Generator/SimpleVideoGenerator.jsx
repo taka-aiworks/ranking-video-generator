@@ -36,7 +36,7 @@ const SimpleVideoGenerator = () => {
 
   const [tab, setTab] = useState('input');
 
-  const [useIrasutoya, setUseIrasutoya] = useState(false); // いらすとや使用フラグ
+  const [useIrasutoya, setUseIrasutoya] = useState(true); // いらすとや使用フラグ（デフォルトON）
 
   
 

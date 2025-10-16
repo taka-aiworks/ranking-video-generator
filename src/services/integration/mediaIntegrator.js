@@ -13,7 +13,7 @@ class MediaIntegrator {
     this.isProcessing = false;
     this.currentImages = [];
     this.debugMode = true;
-    this.useIrasutoya = false; // いらすとや使用フラグ
+    this.useIrasutoya = true; // いらすとや使用フラグ（デフォルトON）
   }
 
   setDebugMode(enabled) {
