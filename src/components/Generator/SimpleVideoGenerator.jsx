@@ -69,6 +69,30 @@ const SimpleVideoGenerator = () => {
 
   const [editableScript, setEditableScript] = useState(null);
 
+  // === 🆕 TTS設定 ===
+  const [ttsSpeakerId, setTtsSpeakerId] = useState(1); // VOICEVOX styles.id
+  const [ttsSpeed, setTtsSpeed] = useState(1.0); // 0.5 - 2.0
+  const [ttsSpeakers, setTtsSpeakers] = useState([]); // {label, styleId}
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await voicevoxService.fetchSpeakers();
+        // speakers: [{name, styles:[{id, name}]}]
+        const list = [];
+        data.forEach(sp => {
+          (sp.styles || []).forEach(st => {
+            list.push({ label: `${sp.name} - ${st.name}`, styleId: st.id });
+          });
+        });
+        setTtsSpeakers(list);
+      } catch (_) {
+        // 失敗時はデフォルトのみ
+        setTtsSpeakers([{ label: 'ずんだもん - ノーマル', styleId: 1 }]);
+      }
+    })();
+  }, []);
+
 
 
   // === 🆕 トレンド分析状態 ===
@@ -414,8 +438,9 @@ const SimpleVideoGenerator = () => {
       console.log(`🎤 [${i+1}/${slideTexts.length}] ${slide.type} 音声生成中: ${slide.text.substring(0, 30)}...`);
       
       try {
-        // VoiceVoxで音声生成
-        const audioBlob = await voicevoxService.synthesizeToBlob(slide.text, 1); // speaker_id=1
+        // VoiceVoxで音声生成（選択した話者・スピードを使用）
+        const clampedSpeed = Math.min(2.0, Math.max(0.5, ttsSpeed || 1.0));
+        const audioBlob = await voicevoxService.synthesizeToBlob(slide.text, ttsSpeakerId, { speedScale: clampedSpeed });
         
         // BlobからURLを生成
         const audioUrl = URL.createObjectURL(audioBlob);
@@ -451,7 +476,7 @@ const SimpleVideoGenerator = () => {
       ...videoDesign,
       slideAudios: slideAudios
     };
-  }, []);
+  }, [ttsSpeakerId, ttsSpeed]);
 
   // === ステップ2：動画生成（確定したスクリプトから） ===
 
@@ -579,9 +604,9 @@ const SimpleVideoGenerator = () => {
 
         aiDesign: audioEnhancedDesign,
 
-        hasImages: audioEnhancedDesign.slideImages && Object.keys(audioEnhancedDesign.slideImages).length > 0,
+        hasImages: slideImages && Object.keys(slideImages).length > 0,
 
-        imageCount: audioEnhancedDesign.slideImages ? Object.keys(audioEnhancedDesign.slideImages).length : 0
+        imageCount: slideImages ? Object.keys(slideImages).length : 0
 
       };
 
@@ -609,7 +634,7 @@ const SimpleVideoGenerator = () => {
 
     }
 
-  }, [isEditingScript, editableScript, generatedScript, integrateImages, isIntegrationEnabled, format, keyword, generateSlideAudios]);
+  }, [isEditingScript, editableScript, generatedScript, integrateImages, isIntegrationEnabled, format, keyword, generateSlideAudios, slideImages]);
 
 
 
@@ -962,6 +987,38 @@ const SimpleVideoGenerator = () => {
 
               <h2 className="text-xl font-bold mb-4">🖼️ 画像設定</h2>
               
+              {/* 🆕 音声設定 */}
+              <div className="mt-6">
+                <h3 className="text-lg font-bold mb-2">🎙️ 音声設定（VOICEVOX）</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-1">話者（名前 - スタイル）</label>
+                    <select
+                      value={ttsSpeakerId}
+                      onChange={(e) => setTtsSpeakerId(Number(e.target.value) || 1)}
+                      className="w-full px-3 py-2 bg-gray-800 text-white border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    >
+                      {ttsSpeakers.map(opt => (
+                        <option key={opt.styleId} value={opt.styleId} className="bg-gray-800 text-white">{opt.label}</option>
+                      ))}
+                    </select>
+                    <div className="text-xs text-gray-400 mt-1">VOICEVOXの話者とスタイルを選択</div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-1">読み上げスピード</label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.05"
+                      value={ttsSpeed}
+                      onChange={(e) => setTtsSpeed(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">現在: {ttsSpeed.toFixed(2)}x（自動でスライド時間と同期）</div>
+                  </div>
+                </div>
+              </div>
 
 
             </div>

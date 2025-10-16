@@ -17,6 +17,7 @@ class VideoComposer {
     this.narrationSource = null;
     this.showDebugOverlay = false; // デフォルトはオフ
     this._frameToggle = false; // フレーム強制更新用トグル
+    this.dataUrlCanvasCache = new Map(); // DataURL→Canvas キャッシュ
   }
 
   // BGM読み込み
@@ -549,24 +550,19 @@ class VideoComposer {
   // 🚨 完全修正：getSlideImage メソッド（オブジェクト＋配列両対応）
   getSlideImage(slideImages, slideIndex) {
     if (!slideImages) {
-      console.log(`❌ スライド${slideIndex}: slideImages is null/undefined`);
+      // 画像なし
       return null;
     }
     
-    console.log(`🔍 スライド${slideIndex}の画像を検索...`, {
-      type: typeof slideImages,
-      isArray: Array.isArray(slideImages),
-      length: Array.isArray(slideImages) ? slideImages.length : Object.keys(slideImages).length
-    });
+    // 形式情報のみ（騒がしいログ削減）
+    // console.debug 用に変更したいが本番では抑制
     
     // 🔧 修正1: オブジェクト形式の場合（推奨形式）
     if (slideImages && typeof slideImages === 'object' && !Array.isArray(slideImages)) {
-      console.log('📦 オブジェクト形式で検索中...');
-      
       // 直接キーアクセス（最優先）
       if (slideImages[slideIndex]) {
         const image = slideImages[slideIndex];
-        console.log(`✅ スライド${slideIndex}画像取得(オブジェクト):`, image.keyword?.substring(0, 30) + '...');
+        console.log(`✅ スライド${slideIndex}画像取得(オブジェクト):`, (image.alt || '').substring(0, 30) + '...');
         return image;
       }
       
@@ -574,56 +570,34 @@ class VideoComposer {
       const imageValues = Object.values(slideImages);
       const foundByProperty = imageValues.find(img => img?.slideIndex === slideIndex);
       if (foundByProperty) {
-        console.log(`✅ スライド${slideIndex}画像取得(プロパティ検索):`, foundByProperty.keyword?.substring(0, 30) + '...');
+        console.log(`✅ スライド${slideIndex}画像取得(プロパティ検索):`, (foundByProperty.alt || '').substring(0, 30) + '...');
         return foundByProperty;
-      }
-      
-      // 利用可能な画像から循環選択
-      if (imageValues.length > 0) {
-        const fallbackIndex = slideIndex % imageValues.length;
-        const fallbackImage = imageValues[fallbackIndex];
-        if (fallbackImage) {
-          console.log(`⚠️ スライド${slideIndex}画像なし - オブジェクトフォールバック[${fallbackIndex}]使用:`, fallbackImage.keyword?.substring(0, 30) + '...');
-          return fallbackImage;
-        }
       }
     }
     
     // 🔧 修正2: 配列形式の場合（下位互換）
     if (Array.isArray(slideImages)) {
-      console.log('📦 配列形式で検索中...');
-      
       // 直接インデックスアクセス
       if (slideImages[slideIndex]) {
         const image = slideImages[slideIndex];
-        console.log(`✅ スライド${slideIndex}画像取得(配列):`, image.keyword?.substring(0, 30) + '...');
+        console.log(`✅ スライド${slideIndex}画像取得(配列):`, (image.alt || '').substring(0, 30) + '...');
         return image;
       }
       
       // slideIndexプロパティで検索
       const foundByProperty = slideImages.find(img => img?.slideIndex === slideIndex);
       if (foundByProperty) {
-        console.log(`✅ スライド${slideIndex}画像取得(配列プロパティ検索):`, foundByProperty.keyword?.substring(0, 30) + '...');
+        console.log(`✅ スライド${slideIndex}画像取得(配列プロパティ検索):`, (foundByProperty.alt || '').substring(0, 30) + '...');
         return foundByProperty;
-      }
-      
-      // 循環参照でフォールバック
-      if (slideImages.length > 0) {
-        const fallbackIndex = slideIndex % slideImages.length;
-        const fallbackImage = slideImages[fallbackIndex];
-        if (fallbackImage) {
-          console.log(`⚠️ スライド${slideIndex}画像なし - 配列フォールバック[${fallbackIndex}]使用:`, fallbackImage.keyword?.substring(0, 30) + '...');
-          return fallbackImage;
-        }
       }
     }
     
-    console.log(`❌ スライド${slideIndex}画像なし - プレースホルダー使用`);
+    // 明示的に未選択
     return null;
   }
 
   // タイトルスライド描画
-  renderTitleSlide(videoDesign, slideImage = null) {
+  async renderTitleSlide(videoDesign, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -650,16 +624,16 @@ class VideoComposer {
     const imageHeight = 300;
     
     if (slideImage?.optimized?.canvas) {
-      console.log('✅ タイトル画像描画:', slideImage.keyword);
       this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
+    } else if (slideImage?.url && typeof slideImage.url === 'string' && slideImage.url.startsWith('data:')) {
+      await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
     } else {
-      console.log('⚠️ タイトル画像プレースホルダー使用');
-      this.drawImagePlaceholder(imageX, imageY, imageWidth, imageHeight, 'メイン画像');
+      // 画像未選択時は何も描画しない（プレースホルダー非表示）
     }
   }
 
   // 項目スライド描画（🆕 j=0で全内容表示に対応）
-  renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImage = null) {
+  async renderItemSlide(item, itemNumber, subSlideIndex = 0, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -705,37 +679,37 @@ class VideoComposer {
       
       // 画像は下部に小さめに配置
       if (slideImage?.optimized?.canvas) {
-        console.log(`✅ 項目${itemNumber}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 100, imageWidth, imageHeight - 150);
+      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
+        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 100, imageWidth, imageHeight - 150);
       } else {
-        console.log(`⚠️ 項目${itemNumber}プレースホルダー使用`);
-        this.drawImagePlaceholder(imageX, imageY + 100, imageWidth, imageHeight - 150, `${itemTitle}のイメージ`);
+        // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
     } else if (subSlideIndex === 1 && mainContent) {
       this.drawWrappedText(itemTitle, centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.4));
       this.drawWrappedText(mainContent, centerX, textAreaHeight * 0.7, 40, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.6));
       if (slideImage?.optimized?.canvas) {
-        console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
+        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
       } else {
-        console.log(`⚠️ 項目${itemNumber}-${subSlideIndex}プレースホルダー使用`);
-        this.drawImagePlaceholder(imageX, imageY + 30, imageWidth, imageHeight - 60, `${itemTitle}の具体例`);
+        // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
     } else if (subSlideIndex === 2 && details) {
       this.drawWrappedText('💡 ポイント', centerX, textAreaHeight * 0.25, 45, '#000000', { bold: true }, textMaxWidth, Math.floor(textAreaHeight * 0.35));
       this.drawWrappedText(details, centerX, textAreaHeight * 0.7, 38, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.65));
       if (slideImage?.optimized?.canvas) {
-        console.log(`✅ 項目${itemNumber}-${subSlideIndex}画像描画:`, slideImage.keyword);
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
+        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
       } else {
-        console.log(`⚠️ 項目${itemNumber}-${subSlideIndex}プレースホルダー使用`);
-        this.drawImagePlaceholder(imageX, imageY + 30, imageWidth, imageHeight - 60, `${itemTitle}のコツ`);
+        // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
     }
   }
 
   // まとめスライド描画
-  renderSummarySlide(videoDesign, slideImage = null) {
+  async renderSummarySlide(videoDesign, slideImage = null) {
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
@@ -761,11 +735,11 @@ class VideoComposer {
     const imageHeight = 200;
     
     if (slideImage?.optimized?.canvas) {
-      console.log('✅ まとめ画像描画:', slideImage.keyword);
       this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
+    } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
+      await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
     } else {
-      console.log('⚠️ まとめ画像プレースホルダー使用');
-      this.drawImagePlaceholder(imageX, imageY, imageWidth, imageHeight, 'いいね＆チャンネル登録');
+      // 画像未選択時は何も描画しない（プレースホルダー非表示）
     }
   }
 
@@ -816,6 +790,36 @@ class VideoComposer {
     } catch (error) {
       console.error('🚨 画像描画エラー:', error);
       this.drawImagePlaceholder(x, y, width, height, 'エラー');
+    }
+  }
+
+  // Data URL画像描画（アップロード画像用）
+  async drawDataUrlImage(dataUrl, x, y, width, height) {
+    try {
+      // キャッシュされたキャンバスがあればそれを使う（チカチカ防止）
+      let cached = this.dataUrlCanvasCache.get(dataUrl);
+      if (!cached) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const loaded = new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        img.src = dataUrl;
+        await loaded;
+        // 一度だけビットマップ化して保持
+        const off = document.createElement('canvas');
+        off.width = img.naturalWidth || img.width;
+        off.height = img.naturalHeight || img.height;
+        const offCtx = off.getContext('2d');
+        offCtx.drawImage(img, 0, 0);
+        cached = off;
+        this.dataUrlCanvasCache.set(dataUrl, cached);
+      }
+      this.ctx.drawImage(cached, x, y, width, height);
+    } catch (error) {
+      console.warn('⚠️ DataURL画像描画失敗:', error);
+      this.drawImagePlaceholder(x, y, width, height, '画像');
     }
   }
 
