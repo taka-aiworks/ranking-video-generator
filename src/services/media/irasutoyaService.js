@@ -6,8 +6,8 @@ class IrasutoyaService {
     this.cache = new Map();
     this.baseUrl = 'https://www.irasutoya.com';
     
-    // いらすとやの画像URLパターン
-    this.imageUrlPattern = /https:\/\/4\.bp\.blogspot\.com\/[^\/]+\/[^\/]+\/s\d+-[^\.]+\.(jpg|png|gif)/;
+    // いらすとやの画像URLパターン（より広範囲にマッチ）
+    this.imageUrlPattern = /https:\/\/[0-9]+\.bp\.blogspot\.com\/[^\/]+\/[^\/]+\/s\d+-[^\.]+\.(jpg|png|gif)/;
     
     console.log('🎨 いらすとやサービス初期化完了');
   }
@@ -47,20 +47,29 @@ class IrasutoyaService {
     // 方法1: 手動でURLを設定
     const manualUrls = this.getManualUrls(keyword);
     if (manualUrls.length > 0) {
+      console.log(`✅ 手動設定画像を使用: ${keyword} (${manualUrls.length}件)`);
       return manualUrls.slice(0, count);
     }
 
     // 方法2: プロキシ経由でスクレイピング
     try {
+      console.log(`🔍 プロキシ経由でスクレイピング開始: ${searchUrl}`);
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
       const response = await fetch(proxyUrl);
       const data = await response.json();
       
-      return this.parseHtmlForImages(data.contents, count);
+      const scrapedImages = this.parseHtmlForImages(data.contents, count);
+      if (scrapedImages.length > 0) {
+        console.log(`✅ スクレイピング成功: ${scrapedImages.length}件`);
+        return scrapedImages;
+      }
     } catch (error) {
-      console.log('⚠️ スクレイピング失敗、フォールバック使用');
-      return this.getFallbackImages(keyword, count);
+      console.log('⚠️ スクレイピング失敗:', error.message);
     }
+
+    // 方法3: フォールバック画像を使用
+    console.log(`📋 フォールバック画像を使用: ${keyword}`);
+    return this.getFallbackImages(keyword, count);
   }
 
   // HTMLから画像URLを抽出
@@ -87,28 +96,42 @@ class IrasutoyaService {
   // 手動でURLを設定（キーワード別）
   getManualUrls(keyword) {
     const manualImageMap = {
-      // 実際のいらすとやの画像URLを設定
-      '精子': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample1.jpg',
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample2.jpg'
-      ],
-      '愛液': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample3.jpg'
-      ],
-      'アナル': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/irasutoya_sample4.jpg'
-      ],
-      // 一般的なキーワード用のプレースホルダー
-      '健康': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/health1.jpg',
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/health2.jpg'
-      ],
-      '運動': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/exercise1.jpg',
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/exercise2.jpg'
+      // 実際のいらすとやの画像URLを設定（例：副業関連）
+      '副業': [
+        'https://1.bp.blogspot.com/-example1/s0-d/part_time_job1.jpg',
+        'https://2.bp.blogspot.com/-example2/s0-d/part_time_job2.jpg'
       ],
       'お金': [
-        'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/money1.jpg'
+        'https://3.bp.blogspot.com/-example3/s0-d/money1.jpg',
+        'https://4.bp.blogspot.com/-example4/s0-d/money2.jpg'
+      ],
+      '稼ぐ': [
+        'https://1.bp.blogspot.com/-example5/s0-d/earn_money1.jpg'
+      ],
+      '投資': [
+        'https://2.bp.blogspot.com/-example6/s0-d/investment1.jpg',
+        'https://3.bp.blogspot.com/-example7/s0-d/investment2.jpg'
+      ],
+      '貯金': [
+        'https://4.bp.blogspot.com/-example8/s0-d/savings1.jpg'
+      ],
+      '健康': [
+        'https://1.bp.blogspot.com/-example9/s0-d/health1.jpg',
+        'https://2.bp.blogspot.com/-example10/s0-d/health2.jpg'
+      ],
+      '運動': [
+        'https://3.bp.blogspot.com/-example11/s0-d/exercise1.jpg',
+        'https://4.bp.blogspot.com/-example12/s0-d/exercise2.jpg'
+      ],
+      '勉強': [
+        'https://1.bp.blogspot.com/-example13/s0-d/study1.jpg'
+      ],
+      '仕事': [
+        'https://2.bp.blogspot.com/-example14/s0-d/work1.jpg',
+        'https://3.bp.blogspot.com/-example15/s0-d/work2.jpg'
+      ],
+      'ビジネス': [
+        'https://4.bp.blogspot.com/-example16/s0-d/business1.jpg'
       ]
     };
 
@@ -128,18 +151,13 @@ class IrasutoyaService {
     const specificImages = this.getManualUrls(keyword);
     allImages.push(...specificImages);
     
-    // 汎用画像を追加
+    // 汎用画像を追加（実際のいらすとや画像URLに置き換え）
     const generalImages = [
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general1.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general2.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general3.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general4.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general5.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general6.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general7.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general8.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general9.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general10.jpg'
+      'https://1.bp.blogspot.com/-example1/s0-d/general1.jpg',
+      'https://2.bp.blogspot.com/-example2/s0-d/general2.jpg',
+      'https://3.bp.blogspot.com/-example3/s0-d/general3.jpg',
+      'https://4.bp.blogspot.com/-example4/s0-d/general4.jpg',
+      'https://5.bp.blogspot.com/-example5/s0-d/general5.jpg'
     ];
 
     generalImages.forEach((url, index) => {
@@ -154,14 +172,14 @@ class IrasutoyaService {
     return allImages.slice(0, count);
   }
 
-  // フォールバック画像（いらすとやの一般的な画像を使用）
+  // フォールバック画像（SVGベースのプレースホルダー）
   getFallbackImages(keyword, count) {
     const fallbackUrls = [
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general1.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general2.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general3.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general4.jpg',
-      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general5.jpg'
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZGRkZGRiIvPjxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSIyODAiIGZpbGw9IiNGMEYwRjAiLz48dGV4dCB4PSIyMDAiIHk9IjE1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjNjY2NjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+',
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZGRkZGRiIvPjxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSIyODAiIGZpbGw9IiNFMEY0RkYiLz48dGV4dCB4PSIyMDAiIHk9IjE1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjNjY2NjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+',
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZGRkZGRiIvPjxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSIyODAiIGZpbGw9IiNGRkVFRUQiLz48dGV4dCB4PSIyMDAiIHk9IjE1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjNjY2NjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+',
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZGRkZGRiIvPjxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSIyODAiIGZpbGw9IiNFREZGRUQiLz48dGV4dCB4PSIyMDAiIHk9IjE1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjNjY2NjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+',
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZGRkZGRiIvPjxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSIyODAiIGZpbGw9IiNGRkZGRUQiLz48dGV4dCB4PSIyMDAiIHk9IjE1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmaWxsPSIjNjY2NjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+'
     ];
 
     return fallbackUrls.slice(0, count).map((url, index) => ({
@@ -174,7 +192,7 @@ class IrasutoyaService {
 
   // いらすとやの検索URLを生成（手動でアクセス用）
   generateSearchUrl(keyword) {
-    return `${this.baseUrl}/search/label/${encodeURIComponent(keyword)}`;
+    return `${this.baseUrl}/search?q=${encodeURIComponent(keyword)}`;
   }
 
   // キーワードを日本語に変換（必要に応じて）

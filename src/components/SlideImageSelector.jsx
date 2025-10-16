@@ -1,34 +1,29 @@
-// src/components/ImageSelector.jsx
+// src/components/SlideImageSelector.jsx
 import React, { useState, useEffect } from 'react';
 import irasutoyaService from '../services/media/irasutoyaService.js';
 
-const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
+const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, currentImage }) => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(currentImage || null);
 
   useEffect(() => {
-    if (keyword) {
-      loadImages();
-    }
-  }, [keyword]);
+    loadImages();
+  }, [slideText]);
 
   const loadImages = async () => {
     setLoading(true);
     try {
+      // スライドのテキストからキーワードを抽出
+      const keyword = extractKeywordFromSlide(slideText);
+      console.log(`🔍 スライド${slideIndex}の画像検索開始:`, keyword);
+      
       // いらすとやの検索URLを生成
       const searchUrl = irasutoyaService.generateSearchUrl(keyword);
       console.log('🔍 いらすとや検索URL:', searchUrl);
       
-      // 手動で設定された画像を取得
-      const manualImages = irasutoyaService.getManualUrls(keyword);
-      
-      // フォールバック画像も追加
-      const fallbackImages = irasutoyaService.getFallbackImages(keyword, 10);
-      
-      // 全ての画像を結合（より多くの画像を提供）
-      const allImages = irasutoyaService.getAllAvailableImages(keyword, 20);
-      
+      // 利用可能な画像を取得
+      const allImages = irasutoyaService.getAllAvailableImages(keyword, 15);
       setImages(allImages);
     } catch (error) {
       console.error('❌ 画像読み込みエラー:', error);
@@ -38,32 +33,62 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
     }
   };
 
+  // スライドテキストからキーワードを抽出
+  const extractKeywordFromSlide = (slideText) => {
+    if (!slideText) return '汎用';
+    
+    // タイトルスライドの場合
+    if (slideText.includes('title') || slideText.includes('タイトル')) {
+      return 'タイトル';
+    }
+    
+    // まとめスライドの場合
+    if (slideText.includes('まとめ') || slideText.includes('summary')) {
+      return 'まとめ';
+    }
+    
+    // テキストから主要なキーワードを抽出
+    const keywords = slideText.split(/[、。\s]+/).filter(word => 
+      word.length > 1 && 
+      !['について', 'です', 'ます', 'する', 'した', 'ある', 'いる'].includes(word)
+    );
+    
+    return keywords[0] || '汎用';
+  };
+
   const handleImageClick = (image) => {
     setSelectedImage(image);
   };
 
   const handleConfirm = () => {
     if (selectedImage && onImageSelect) {
-      onImageSelect(selectedImage);
+      onImageSelect(slideIndex, selectedImage);
     }
   };
 
   const handleOpenIrasutoya = () => {
+    const keyword = extractKeywordFromSlide(slideText);
     const searchUrl = irasutoyaService.generateSearchUrl(keyword);
     window.open(searchUrl, '_blank');
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
+      <div className="bg-white rounded-xl p-6 max-w-5xl max-h-[85vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">🎨 画像選択: {keyword}</h2>
+          <h2 className="text-2xl font-bold">🖼️ スライド{slideIndex + 1}の画像選択</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl"
           >
             ×
           </button>
+        </div>
+
+        {/* スライドテキスト表示 */}
+        <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+          <h3 className="font-bold text-sm text-gray-700 mb-1">スライド内容:</h3>
+          <p className="text-sm text-gray-600">{slideText || 'テキストなし'}</p>
         </div>
 
         {/* いらすとや検索ボタン */}
@@ -76,7 +101,7 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
           >
             <span>🔍</span>
-            <span>いらすとやで「{keyword}」を検索</span>
+            <span>いらすとやで「{extractKeywordFromSlide(slideText)}」を検索</span>
           </button>
         </div>
 
@@ -87,7 +112,7 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
         ) : (
           <>
             {/* 画像グリッド */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
               {images.map((image, index) => (
                 <div
                   key={index}
@@ -101,17 +126,16 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
                   <img
                     src={image.url}
                     alt={image.alt}
-                    className="w-full h-32 object-cover"
+                    className="w-full h-24 object-cover"
                     onError={(e) => {
                       e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgZmlsbD0iI0NDQ0NDQyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+';
                     }}
                   />
-                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-2">
-                    <div className="truncate">{image.alt}</div>
-                    <div className="text-xs opacity-75">{image.source}</div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1">
+                    <div className="truncate text-xs">{image.alt}</div>
                   </div>
                   {selectedImage?.url === image.url && (
-                    <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">
+                    <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
                       ✓
                     </div>
                   )}
@@ -127,7 +151,7 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
                   <img
                     src={selectedImage.url}
                     alt={selectedImage.alt}
-                    className="w-20 h-20 object-cover rounded"
+                    className="w-24 h-24 object-cover rounded"
                   />
                   <div>
                     <div className="font-medium">{selectedImage.alt}</div>
@@ -162,4 +186,4 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
   );
 };
 
-export default ImageSelector;
+export default SlideImageSelector;

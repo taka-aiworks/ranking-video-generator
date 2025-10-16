@@ -24,6 +24,7 @@ import voicevoxService from '../../services/tts/voicevox.js';
 
 import { useImageIntegration } from '../../hooks/useImageIntegration.js';
 import ImageSelector from '../ImageSelector.jsx';
+import SlideImageSelector from '../SlideImageSelector.jsx';
 
 
 
@@ -40,6 +41,9 @@ const SimpleVideoGenerator = () => {
   const [useIrasutoya, setUseIrasutoya] = useState(true); // いらすとや使用フラグ（デフォルトON）
   const [showImageSelector, setShowImageSelector] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [showSlideImageSelector, setShowSlideImageSelector] = useState(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(null);
+  const [slideImages, setSlideImages] = useState({}); // スライド別画像
 
   
 
@@ -1165,6 +1169,15 @@ const SimpleVideoGenerator = () => {
                       <span>画像選択</span>
                     </button>
 
+                    {/* スライド別画像選択ボタン */}
+                    <button
+                      onClick={() => setShowSlideImageSelector(true)}
+                      className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                    >
+                      <span>🎯</span>
+                      <span>スライド別画像選択</span>
+                    </button>
+
                     {!isEditingScript ? (
 
                       <button
@@ -1281,6 +1294,18 @@ const SimpleVideoGenerator = () => {
                   showImageSelector={showImageSelector}
 
                   setShowImageSelector={setShowImageSelector}
+
+                  showSlideImageSelector={showSlideImageSelector}
+
+                  setShowSlideImageSelector={setShowSlideImageSelector}
+
+                  slideImages={slideImages}
+
+                  setSlideImages={setSlideImages}
+
+                  currentSlideIndex={currentSlideIndex}
+
+                  setCurrentSlideIndex={setCurrentSlideIndex}
 
                   keyword={keyword}
 
@@ -1488,7 +1513,20 @@ const SimpleVideoGenerator = () => {
 
 // 汎用スクリプト表示コンポーネント（簡潔版）
 
-const UniversalScriptDisplay = ({ script, isEditing, onUpdate, showImageSelector, setShowImageSelector, keyword }) => {
+const UniversalScriptDisplay = ({ 
+  script, 
+  isEditing, 
+  onUpdate, 
+  showImageSelector, 
+  setShowImageSelector, 
+  showSlideImageSelector,
+  setShowSlideImageSelector,
+  slideImages,
+  setSlideImages,
+  currentSlideIndex,
+  setCurrentSlideIndex,
+  keyword 
+}) => {
 
   if (!script) return null;
 
@@ -1924,6 +1962,116 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate, showImageSelector
             console.log('選択された画像:', image);
           }}
           onClose={() => setShowImageSelector(false)}
+        />
+      )}
+
+      {/* スライド別画像選択モーダル */}
+      {showSlideImageSelector && generatedScript && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">🎯 スライド別画像選択</h2>
+              <button
+                onClick={() => setShowSlideImageSelector(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* タイトルスライド */}
+              <div className="border rounded-lg p-4">
+                <h3 className="font-bold mb-2">スライド1: タイトル</h3>
+                <p className="text-sm text-gray-600 mb-3">{generatedScript.title}</p>
+                <div className="flex space-x-2">
+                  {slideImages[0] && (
+                    <img src={slideImages[0].url} alt={slideImages[0].alt} className="w-16 h-16 object-cover rounded" />
+                  )}
+                  <button
+                    onClick={() => {
+                      setCurrentSlideIndex(0);
+                      // SlideImageSelectorを表示
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                  >
+                    {slideImages[0] ? '変更' : '選択'}
+                  </button>
+                </div>
+              </div>
+
+              {/* アイテムスライド */}
+              {generatedScript.items && generatedScript.items.map((item, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <h3 className="font-bold mb-2">スライド{index + 2}: アイテム{index + 1}</h3>
+                  <p className="text-sm text-gray-600 mb-3">{item.text || item.main || item.name}</p>
+                  <div className="flex space-x-2">
+                    {slideImages[index + 1] && (
+                      <img src={slideImages[index + 1].url} alt={slideImages[index + 1].alt} className="w-16 h-16 object-cover rounded" />
+                    )}
+                    <button
+                      onClick={() => {
+                        setCurrentSlideIndex(index + 1);
+                        // SlideImageSelectorを表示
+                      }}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      {slideImages[index + 1] ? '変更' : '選択'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* まとめスライド */}
+              <div className="border rounded-lg p-4">
+                <h3 className="font-bold mb-2">スライド{generatedScript.items ? generatedScript.items.length + 2 : 2}: まとめ</h3>
+                <p className="text-sm text-gray-600 mb-3">まとめ。、、。いいねとチャンネル登録お願いします。</p>
+                <div className="flex space-x-2">
+                  {slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1] && (
+                    <img src={slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1].url} alt={slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1].alt} className="w-16 h-16 object-cover rounded" />
+                  )}
+                  <button
+                    onClick={() => {
+                      setCurrentSlideIndex(generatedScript.items ? generatedScript.items.length + 1 : 1);
+                      // SlideImageSelectorを表示
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                  >
+                    {slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1] ? '変更' : '選択'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowSlideImageSelector(false)}
+                className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+              >
+                完了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 個別スライド画像選択モーダル */}
+      {currentSlideIndex !== null && generatedScript && (
+        <SlideImageSelector
+          slideIndex={currentSlideIndex}
+          slideText={
+            currentSlideIndex === 0 ? generatedScript.title :
+            currentSlideIndex <= (generatedScript.items ? generatedScript.items.length : 0) ?
+              (generatedScript.items[currentSlideIndex - 1]?.text || generatedScript.items[currentSlideIndex - 1]?.main || generatedScript.items[currentSlideIndex - 1]?.name) :
+            'まとめ。、、。いいねとチャンネル登録お願いします。'
+          }
+          currentImage={slideImages[currentSlideIndex]}
+          onImageSelect={(slideIndex, image) => {
+            setSlideImages(prev => ({ ...prev, [slideIndex]: image }));
+            setCurrentSlideIndex(null);
+            console.log(`スライド${slideIndex + 1}の画像選択:`, image);
+          }}
+          onClose={() => setCurrentSlideIndex(null)}
         />
       )}
 
