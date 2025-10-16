@@ -5,6 +5,7 @@ import imageOptimizer from '../media/imageOptimizer.js';
 import videoComposer from '../video/videoComposer.js';
 import keywordAnalyzer from '../ai/keywordAnalyzer.js';
 import translationService from '../translation/translationService.js';
+import irasutoyaService from '../media/irasutoyaService.js';
 
 class MediaIntegrator {
   constructor() {
@@ -12,10 +13,17 @@ class MediaIntegrator {
     this.isProcessing = false;
     this.currentImages = [];
     this.debugMode = true;
+    this.useIrasutoya = false; // いらすとや使用フラグ
   }
 
   setDebugMode(enabled) {
     this.debugMode = enabled;
+  }
+
+  // いらすとや使用設定
+  setIrasutoyaMode(enabled) {
+    this.useIrasutoya = enabled;
+    console.log('🎨 いらすとやモード:', enabled ? 'ON' : 'OFF');
   }
 
   log(...args) {
@@ -245,7 +253,10 @@ class MediaIntegrator {
       }
       usedKeywords.add(finalKeyword);
 
-      const imageData = await imageService.fetchMainImage(finalKeyword, { type });
+      // いらすとやモードかどうかで画像取得方法を切り替え
+      const imageData = this.useIrasutoya 
+        ? await irasutoyaService.fetchImages(finalKeyword, 1).then(images => images[0] || {})
+        : await imageService.fetchMainImage(finalKeyword, { type });
       
       // URL重複チェック
       if (usedUrls.has(imageData.url)) {
@@ -304,9 +315,10 @@ class MediaIntegrator {
       const result = await this.fetchSingleImage(keywordData, index, usedUrls, usedKeywords);
       results.push(result);
       
-      // レート制限回避のため待機（5秒間隔に合わせる）
+      // レート制限回避のため待機（いらすとやの場合は短縮）
+      const waitTime = this.useIrasutoya ? 1000 : 5000;
       if (index < keywords.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
     

@@ -36,6 +36,8 @@ const SimpleVideoGenerator = () => {
 
   const [tab, setTab] = useState('input');
 
+  const [useIrasutoya, setUseIrasutoya] = useState(false); // いらすとや使用フラグ
+
   
 
   // === 生成状態 ===
@@ -1134,6 +1136,22 @@ const SimpleVideoGenerator = () => {
                   <h2 className="text-2xl font-bold">📝 AI生成スクリプト</h2>
 
                   <div className="flex space-x-2">
+
+                    {/* いらすとや切り替えボタン */}
+                    <button
+                      onClick={() => {
+                        setUseIrasutoya(!useIrasutoya);
+                        mediaIntegrator.setIrasutoyaMode(!useIrasutoya);
+                      }}
+                      className={`px-4 py-2 rounded-lg flex items-center space-x-2 ${
+                        useIrasutoya 
+                          ? 'bg-green-600 hover:bg-green-700' 
+                          : 'bg-gray-600 hover:bg-gray-700'
+                      }`}
+                    >
+                      <span>{useIrasutoya ? '🎨' : '📷'}</span>
+                      <span>{useIrasutoya ? 'いらすとや' : 'Unsplash'}</span>
+                    </button>
 
                     {!isEditingScript ? (
 
