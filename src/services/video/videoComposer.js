@@ -251,9 +251,7 @@ class VideoComposer {
         console.log('📦 データチャンク追加:', e.data.size, 'bytes', '累計:', chunkCount, 'チャンク');
         
         // 🎯 リアルタイムでチャンク状況を確認
-        if (chunkCount % 5 === 0) {
-          console.log('⏰ 録画進捗:', chunkCount + 'チャンク');
-        }
+        // 録画進捗ログを削除（ループ軽減）
       }
     };
     
@@ -429,7 +427,7 @@ class VideoComposer {
         const slideAudio = normalizedSlideAudios[i];
         const slideDuration = slideAudio.duration;
 
-        console.log(`📍 [${i+1}/${totalSlides}] ${slideAudio.type}スライド描画開始`);
+        // スライド描画開始ログを削除（ループ軽減）
         const slideImage = this.getSlideImage(slideImages, i);
         if (slideAudio.type === 'title') {
           this.renderTitleSlide(videoDesign, slideImage);
@@ -454,7 +452,7 @@ class VideoComposer {
         console.log(`✅ ${slideAudio.type}描画完了`);
 
         const target = elapsed + slideDuration;
-        console.log(`⏰ ${slideAudio.type}表示（オーディオ同期）: ${slideDuration.toFixed(2)}秒 → 累計${target.toFixed(2)}秒`);
+        // スライド表示ログを削除（ループ軽減）
         // 表示中は定期的にフレーム再描画 + 発行
         const slideImageLoop = slideImage; // 再利用
         while (true) {
@@ -480,7 +478,7 @@ class VideoComposer {
           if (onProgress) {
           const progress = ((i + 1) / totalSlides) * 100;
             onProgress(Math.round(progress));
-            console.log('📊 進捗:', Math.round(progress) + '%');
+            // 進捗ログを削除（ループ軽減）
           }
         elapsed = target;
       }

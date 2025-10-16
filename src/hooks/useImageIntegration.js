@@ -13,7 +13,7 @@ export const useImageIntegration = () => {
 
   // === 画像設定 ===（既存のまま）
   const [settings, setSettings] = useState({
-    enabled: true,
+    enabled: false,
     layout: 'bottom-half', // 'top-half', 'full', 'split'
     quality: 'high',
     autoRefresh: false,

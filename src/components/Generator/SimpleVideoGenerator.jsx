@@ -46,7 +46,7 @@ const SimpleVideoGenerator = () => {
   const [slideImages, setSlideImages] = useState({}); // スライド別画像
 
   
-
+  
   // === 生成状態 ===
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -153,7 +153,7 @@ const SimpleVideoGenerator = () => {
     if (!inputKeyword.trim()) return;
 
     
-
+    
     setIsAnalyzingTrend(true);
 
     try {
@@ -161,7 +161,7 @@ const SimpleVideoGenerator = () => {
       console.log('📈 トレンド分析開始:', inputKeyword);
 
       
-
+      
       // トレンド分析と関連キーワードを並行実行
 
       const [trendData, relatedData] = await Promise.all([
@@ -171,12 +171,12 @@ const SimpleVideoGenerator = () => {
         trendAnalyzer.generateRelatedKeywords(inputKeyword)
 
       ]);
-
       
+
 
       // setTrendAnalysis(trendData);
       // setRelatedKeywords(relatedData);
-
+      
       console.log('📈 トレンド分析完了:', { trendData, relatedData });
 
     } catch (error) {
@@ -560,7 +560,7 @@ const SimpleVideoGenerator = () => {
         { narrationPlaybackRate: playbackRate }
 
       );
-      
+
       const result = {
 
         title: audioEnhancedDesign.title,
@@ -815,7 +815,7 @@ const SimpleVideoGenerator = () => {
 
 
               </div>
-
+              
               
 
               {/* 🆕 実際のトレンドキーワード（APIから取得） */}
@@ -874,9 +874,9 @@ const SimpleVideoGenerator = () => {
                         <span>{item.keyword}</span>
                       </button>
                     ))}
-                  </div>
-                )}
-                
+                </div>
+              )}
+
                 {/* ソース説明 */}
                 <div className="mt-3 text-xs text-gray-500 space-y-1">
                   <div className="flex items-center gap-2">
@@ -961,122 +961,8 @@ const SimpleVideoGenerator = () => {
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
 
               <h2 className="text-xl font-bold mb-4">🖼️ 画像設定</h2>
-
               
 
-              {/* 画像統合ON/OFF */}
-
-              <div className="flex items-center justify-between mb-4 p-4 bg-white/5 rounded-lg">
-
-                <div>
-
-                  <div className="font-bold text-green-400">自動画像挿入</div>
-
-                  <div className="text-sm text-gray-400">関連画像を動画に自動挿入します</div>
-
-                </div>
-
-                <button
-
-                  onClick={() => updateImageSettings({ enabled: !isIntegrationEnabled })}
-
-                  className={`w-12 h-6 rounded-full transition-colors ${
-
-                    isIntegrationEnabled ? 'bg-green-500' : 'bg-gray-600'
-
-                  }`}
-
-                >
-
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-
-                    isIntegrationEnabled ? 'translate-x-6' : 'translate-x-0.5'
-
-                  }`} />
-
-                </button>
-
-              </div>
-
-
-
-              {/* 画像レイアウト選択 */}
-
-              {isIntegrationEnabled && (
-
-                <div className="space-y-3">
-
-                  <div className="text-sm font-bold text-gray-300">画像配置</div>
-
-                  <div className="grid grid-cols-2 gap-3">
-
-                    {[
-
-                      { value: 'bottom-half', label: '下半分', desc: '推奨' },
-
-                      { value: 'top-half', label: '上半分', desc: '' }
-
-                    ].map(layout => (
-
-                      <button
-
-                        key={layout.value}
-
-                        onClick={() => updateImageSettings({ layout: layout.value })}
-
-                        className={`p-3 rounded-lg border text-left transition-colors ${
-
-                          imageSettings.layout === layout.value
-
-                            ? 'border-green-400 bg-green-500/20 text-green-400'
-
-                            : 'border-white/20 hover:bg-white/10'
-
-                        }`}
-
-                      >
-
-                        <div className="font-bold">{layout.label}</div>
-
-                        {layout.desc && (
-
-                          <div className="text-xs text-gray-400">{layout.desc}</div>
-
-                        )}
-
-                      </button>
-
-                    ))}
-
-                  </div>
-
-                </div>
-
-              )}
-
-
-
-              {/* 画像統合状況 */}
-
-              {isIntegrationEnabled && (
-
-                <div className="mt-4 p-3 bg-blue-500/20 rounded-lg">
-
-                  <div className="text-sm text-blue-400 font-bold mb-1">
-
-                    {isImageLoading ? '🔄 画像処理中...' : '📊 画像統合状況'}
-
-                  </div>
-
-                  <div className="text-xs text-gray-300">
-
-                    {hasImages ? `${images.length}件の画像が準備済み` : '画像未取得'}
-
-                  </div>
-
-                </div>
-
-              )}
 
             </div>
 
@@ -1085,15 +971,15 @@ const SimpleVideoGenerator = () => {
             {/* 生成ボタン */}
             <div className="space-y-3">
               {/* メイン生成ボタン */}
-              <button
+            <button
 
-                onClick={handleGenerate}
+              onClick={handleGenerate}
 
-                disabled={!keyword || isGenerating}
+              disabled={!keyword || isGenerating}
 
-                className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 disabled:opacity-50 text-black font-bold py-6 rounded-xl text-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:scale-100"
+              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 disabled:opacity-50 text-black font-bold py-6 rounded-xl text-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:scale-100"
 
-              >
+            >
 
               <Zap className="w-6 h-6" />
 
@@ -1104,7 +990,7 @@ const SimpleVideoGenerator = () => {
               </span>
 
             </button>
-            </div>
+          </div>
 
           </div>
 
@@ -1142,41 +1028,15 @@ const SimpleVideoGenerator = () => {
 
                   <h2 className="text-2xl font-bold">📝 AI生成スクリプト</h2>
 
-                  <div className="flex space-x-2">
-
-                    {/* いらすとや切り替えボタン */}
-                    <button
-                      onClick={() => {
-                        setUseIrasutoya(!useIrasutoya);
-                        mediaIntegrator.setIrasutoyaMode(!useIrasutoya);
-                      }}
-                      className={`px-4 py-2 rounded-lg flex items-center space-x-2 ${
-                        useIrasutoya 
-                          ? 'bg-green-600 hover:bg-green-700' 
-                          : 'bg-gray-600 hover:bg-gray-700'
-                      }`}
-                    >
-                      <span>{useIrasutoya ? '🎨' : '📷'}</span>
-                      <span>{useIrasutoya ? 'いらすとや' : 'Unsplash'}</span>
-                    </button>
-
-                    {/* 画像選択ボタン */}
-                    <button
-                      onClick={() => setShowImageSelector(true)}
-                      className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg flex items-center space-x-2"
-                    >
-                      <span>🖼️</span>
-                      <span>画像選択</span>
-                    </button>
-
-                    {/* スライド別画像選択ボタン */}
-                    <button
-                      onClick={() => setShowSlideImageSelector(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg flex items-center space-x-2"
-                    >
-                      <span>🎯</span>
-                      <span>スライド別画像選択</span>
-                    </button>
+                <div className="flex space-x-2">
+                  {/* スライド別画像選択ボタン（復活） */}
+                  <button
+                    onClick={() => setShowSlideImageSelector(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                  >
+                    <span>🎯</span>
+                    <span>スライド別画像選択</span>
+                  </button>
 
                     {!isEditingScript ? (
 
@@ -1315,7 +1175,7 @@ const SimpleVideoGenerator = () => {
 
             )}
 
-          </div>
+                  </div>
 
         )}
 
@@ -1346,54 +1206,9 @@ const SimpleVideoGenerator = () => {
               {Math.floor(progress)}% 完了
 
             </div>
-
             
 
-            {/* 🆕 画像処理状況表示 */}
-
-            {isIntegrationEnabled && (
-
-              <div className="mt-6 p-4 bg-white/5 rounded-lg">
-
-                <div className="text-sm text-gray-300 mb-2">📊 画像統合状況</div>
-
-                <div className="flex justify-center space-x-6 text-xs">
-
-                  <div className="text-center">
-
-                    <div className="text-green-400 font-bold">{images.length}</div>
-
-                    <div className="text-gray-400">取得済み</div>
-
                   </div>
-
-                  <div className="text-center">
-
-                    <div className="text-blue-400 font-bold">{imageSettings.layout}</div>
-
-                    <div className="text-gray-400">レイアウト</div>
-
-                  </div>
-
-                  <div className="text-center">
-
-                    <div className="text-purple-400 font-bold">
-
-                      {isImageLoading ? '処理中' : '準備完了'}
-
-                    </div>
-
-                    <div className="text-gray-400">状態</div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-            )}
-
-          </div>
 
         )}
 
@@ -1428,23 +1243,9 @@ const SimpleVideoGenerator = () => {
               <div className="text-gray-400 mb-2">{video.duration} | {video.videoData.size}</div>
 
               <div className="text-sm text-yellow-400 mb-2">{video.format}</div>
-
               
-
-              {/* 🆕 画像統合情報表示 */}
-
-              {video.hasImages && (
-
-                <div className="text-xs text-green-400 mb-4">
-
-                  ✅ {video.imageCount}件の画像を統合済み
-
-                </div>
-
-              )}
-
               
-
+              
               <div className="flex justify-center space-x-4 mb-6">
 
                 <button 
@@ -1537,7 +1338,7 @@ const UniversalScriptDisplay = ({
     if (!isEditing || !onUpdate) return;
 
     
-
+    
     const updated = { ...script };
 
     const keys = path.split('.');
@@ -1545,7 +1346,7 @@ const UniversalScriptDisplay = ({
     let current = updated;
 
     
-
+    
     for (let i = 0; i < keys.length - 1; i++) {
 
       if (!current[keys[i]]) current[keys[i]] = {};
@@ -1555,7 +1356,7 @@ const UniversalScriptDisplay = ({
     }
 
     
-
+    
     current[keys[keys.length - 1]] = value;
 
     onUpdate(updated);
@@ -1701,7 +1502,7 @@ const UniversalScriptDisplay = ({
                   )}
 
                   
-
+                  
                   <div className="flex-1">
 
                     {isEditing ? (
@@ -1745,16 +1546,16 @@ const UniversalScriptDisplay = ({
                         ) : (
                           <>
                             {/* 旧フォーマット: name + main */}
-                            <h4 className="font-bold text-white mb-2">
-                              {item.name || item.title || `アイテム ${index + 1}`}
-                            </h4>
-
-                            {/* 価格（あれば） */}
-                            {item.price && (
-                              <p className="text-green-400 font-bold mb-2">{item.price}</p>
-                            )}
-
-                            {/* メイン内容 */}
+                        <h4 className="font-bold text-white mb-2">
+                          {item.name || item.title || `アイテム ${index + 1}`}
+                        </h4>
+                        
+                        {/* 価格（あれば） */}
+                        {item.price && (
+                          <p className="text-green-400 font-bold mb-2">{item.price}</p>
+                        )}
+                        
+                        {/* メイン内容 */}
                             {(item.main || item.content?.main) && (
                               <p className="text-gray-300 mb-2 text-lg font-semibold">{item.main || item.content.main}</p>
                             )}
@@ -1762,7 +1563,7 @@ const UniversalScriptDisplay = ({
                         )}
 
                         
-
+                        
                         {/* 詳細内容 */}
 
                         {item.content?.details && (
@@ -1772,7 +1573,7 @@ const UniversalScriptDisplay = ({
                         )}
 
                         
-
+                        
                         {/* 追加情報 */}
 
                         {item.content?.extra && (
@@ -1786,7 +1587,7 @@ const UniversalScriptDisplay = ({
                         )}
 
                         
-
+                        
                         {/* 従来の description */}
 
                         {item.description && !item.content && (
@@ -1796,7 +1597,7 @@ const UniversalScriptDisplay = ({
                         )}
 
                         
-
+                        
                         {/* 特徴・features */}
 
                         {item.features && item.features.length > 0 && (
@@ -1966,7 +1767,7 @@ const UniversalScriptDisplay = ({
       )}
 
       {/* スライド別画像選択モーダル */}
-      {showSlideImageSelector && generatedScript && (
+      {showSlideImageSelector && script && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -1977,13 +1778,16 @@ const UniversalScriptDisplay = ({
               >
                 ×
               </button>
-            </div>
+    </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* タイトルスライド */}
-              <div className="border rounded-lg p-4">
-                <h3 className="font-bold mb-2">スライド1: タイトル</h3>
-                <p className="text-sm text-gray-600 mb-3">{generatedScript.title}</p>
+              <div className={`border rounded-lg p-4 ${slideImages[0] ? 'border-green-500 border-4' : ''}`}>
+                <h3 className="font-bold mb-2">
+                  スライド1: タイトル
+                  {slideImages[0] && <span className="ml-2 text-green-500">✓</span>}
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">{script.title}</p>
                 <div className="flex space-x-2">
                   {slideImages[0] && (
                     <img src={slideImages[0].url} alt={slideImages[0].alt} className="w-16 h-16 object-cover rounded" />
@@ -1991,7 +1795,6 @@ const UniversalScriptDisplay = ({
                   <button
                     onClick={() => {
                       setCurrentSlideIndex(0);
-                      // SlideImageSelectorを表示
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                   >
@@ -2001,9 +1804,12 @@ const UniversalScriptDisplay = ({
               </div>
 
               {/* アイテムスライド */}
-              {generatedScript.items && generatedScript.items.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <h3 className="font-bold mb-2">スライド{index + 2}: アイテム{index + 1}</h3>
+              {script.items && script.items.map((item, index) => (
+                <div key={index} className={`border rounded-lg p-4 ${slideImages[index + 1] ? 'border-green-500 border-4' : ''}`}>
+                  <h3 className="font-bold mb-2">
+                    スライド{index + 2}: アイテム{index + 1}
+                    {slideImages[index + 1] && <span className="ml-2 text-green-500">✓</span>}
+                  </h3>
                   <p className="text-sm text-gray-600 mb-3">{item.text || item.main || item.name}</p>
                   <div className="flex space-x-2">
                     {slideImages[index + 1] && (
@@ -2011,8 +1817,7 @@ const UniversalScriptDisplay = ({
                     )}
                     <button
                       onClick={() => {
-                        setCurrentSlideIndex(index + 1);
-                        // SlideImageSelectorを表示
+                      setCurrentSlideIndex(index + 1);
                       }}
                       className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                     >
@@ -2023,21 +1828,23 @@ const UniversalScriptDisplay = ({
               ))}
 
               {/* まとめスライド */}
-              <div className="border rounded-lg p-4">
-                <h3 className="font-bold mb-2">スライド{generatedScript.items ? generatedScript.items.length + 2 : 2}: まとめ</h3>
+              <div className={`border rounded-lg p-4 ${slideImages[script.items ? script.items.length + 1 : 1] ? 'border-green-500 border-4' : ''}`}>
+                <h3 className="font-bold mb-2">
+                  スライド{script.items ? script.items.length + 2 : 2}: まとめ
+                  {slideImages[script.items ? script.items.length + 1 : 1] && <span className="ml-2 text-green-500">✓</span>}
+                </h3>
                 <p className="text-sm text-gray-600 mb-3">まとめ。、、。いいねとチャンネル登録お願いします。</p>
                 <div className="flex space-x-2">
-                  {slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1] && (
-                    <img src={slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1].url} alt={slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1].alt} className="w-16 h-16 object-cover rounded" />
+                  {slideImages[script.items ? script.items.length + 1 : 1] && (
+                    <img src={slideImages[script.items ? script.items.length + 1 : 1].url} alt={slideImages[script.items ? script.items.length + 1 : 1].alt} className="w-16 h-16 object-cover rounded" />
                   )}
                   <button
                     onClick={() => {
-                      setCurrentSlideIndex(generatedScript.items ? generatedScript.items.length + 1 : 1);
-                      // SlideImageSelectorを表示
+                      setCurrentSlideIndex(script.items ? script.items.length + 1 : 1);
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                   >
-                    {slideImages[generatedScript.items ? generatedScript.items.length + 1 : 1] ? '変更' : '選択'}
+                    {slideImages[script.items ? script.items.length + 1 : 1] ? '変更' : '選択'}
                   </button>
                 </div>
               </div>
@@ -2056,13 +1863,13 @@ const UniversalScriptDisplay = ({
       )}
 
       {/* 個別スライド画像選択モーダル */}
-      {currentSlideIndex !== null && generatedScript && (
+      {currentSlideIndex !== null && script && (
         <SlideImageSelector
           slideIndex={currentSlideIndex}
           slideText={
-            currentSlideIndex === 0 ? generatedScript.title :
-            currentSlideIndex <= (generatedScript.items ? generatedScript.items.length : 0) ?
-              (generatedScript.items[currentSlideIndex - 1]?.text || generatedScript.items[currentSlideIndex - 1]?.main || generatedScript.items[currentSlideIndex - 1]?.name) :
+            currentSlideIndex === 0 ? script.title :
+            currentSlideIndex <= (script.items ? script.items.length : 0) ?
+              (script.items[currentSlideIndex - 1]?.text || script.items[currentSlideIndex - 1]?.main || script.items[currentSlideIndex - 1]?.name) :
             'まとめ。、、。いいねとチャンネル登録お願いします。'
           }
           currentImage={slideImages[currentSlideIndex]}

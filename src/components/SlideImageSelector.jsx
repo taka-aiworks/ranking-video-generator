@@ -6,6 +6,8 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(currentImage || null);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const fileInputRef = React.useRef(null);
 
   useEffect(() => {
     loadImages();
@@ -16,17 +18,14 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
     try {
       // スライドのテキストからキーワードを抽出
       const keyword = extractKeywordFromSlide(slideText);
-      console.log(`🔍 スライド${slideIndex}の画像検索開始:`, keyword);
       
       // いらすとやの検索URLを生成
       const searchUrl = irasutoyaService.generateSearchUrl(keyword);
-      console.log('🔍 いらすとや検索URL:', searchUrl);
       
-      // 利用可能な画像を取得
-      const allImages = irasutoyaService.getAllAvailableImages(keyword, 15);
-      setImages(allImages);
+      // 利用可能な画像を取得（実際には表示しない）
+      const allImages = await irasutoyaService.fetchImages(keyword, 0);
+      setImages([]);
     } catch (error) {
-      console.error('❌ 画像読み込みエラー:', error);
       setImages([]);
     } finally {
       setLoading(false);
@@ -47,23 +46,80 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
       return 'まとめ';
     }
     
-    // テキストから主要なキーワードを抽出
-    const keywords = slideText.split(/[、。\s]+/).filter(word => 
+    // 動画内容に即したキーワードマッピング
+    const contentKeywords = {
+      // お金・副業関連
+      '副業': ['副業', 'バイト', 'アルバイト', '仕事', '働く'],
+      'お金': ['お金', '金', '収入', '稼ぐ', '利益'],
+      '投資': ['投資', '株', '株式', '運用', '資産'],
+      '貯金': ['貯金', '貯蓄', '節約', '家計'],
+      'ビジネス': ['ビジネス', '起業', '経営', '会社'],
+      
+      // 健康・運動関連
+      '健康': ['健康', '体', '身体', '体調'],
+      '運動': ['運動', '筋トレ', 'ジム', 'ランニング'],
+      'ダイエット': ['ダイエット', '痩せる', '体重', '減量'],
+      
+      // 学習・勉強関連
+      '勉強': ['勉強', '学習', '学ぶ', '知識'],
+      '受験': ['受験', '試験', 'テスト', '合格'],
+      '英語': ['英語', '英会話', 'TOEIC', '語学'],
+      
+      // 生活関連
+      '料理': ['料理', 'レシピ', '食べ物', '食事'],
+      '掃除': ['掃除', '片付け', '整理', '清潔'],
+      '睡眠': ['睡眠', '寝る', '眠る', '休息'],
+      
+      // 趣味・娯楽
+      'ゲーム': ['ゲーム', '遊び', '娯楽', '趣味'],
+      '映画': ['映画', 'ドラマ', '動画', 'エンタメ'],
+      '音楽': ['音楽', '歌', '楽器', 'コンサート']
+    };
+    
+    // テキストからキーワードを検索
+    for (const [category, keywords] of Object.entries(contentKeywords)) {
+      for (const keyword of keywords) {
+        if (slideText.includes(keyword)) {
+          return category;
+        }
+      }
+    }
+    
+    // マッチしない場合は、テキストから主要なキーワードを抽出
+    const words = slideText.split(/[、。\s]+/).filter(word => 
       word.length > 1 && 
-      !['について', 'です', 'ます', 'する', 'した', 'ある', 'いる'].includes(word)
+      !['について', 'です', 'ます', 'する', 'した', 'ある', 'いる', 'こと', 'もの', 'ため'].includes(word)
     );
     
-    return keywords[0] || '汎用';
+    const extractedKeyword = words[0] || '汎用';
+    return extractedKeyword;
   };
 
   const handleImageClick = (image) => {
     setSelectedImage(image);
   };
 
-  const handleConfirm = () => {
-    if (selectedImage && onImageSelect) {
-      onImageSelect(slideIndex, selectedImage);
-    }
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imageData = {
+        url: e.target.result, // Data URL
+        alt: file.name,
+        source: 'upload',
+        author: 'ユーザー'
+      };
+      setUploadedImage(imageData);
+      setSelectedImage(imageData);
+      
+      // 自動的に選択を確定
+      if (onImageSelect) {
+        onImageSelect(slideIndex, imageData);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleOpenIrasutoya = () => {
@@ -94,7 +150,7 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
         {/* いらすとや検索ボタン */}
         <div className="mb-4 p-4 bg-blue-50 rounded-lg">
           <p className="text-sm text-gray-600 mb-2">
-            より多くの画像を探すには、いらすとやの検索ページを開いてください
+            いらすとやで画像を探してダウンロードしてください
           </p>
           <button
             onClick={handleOpenIrasutoya}
@@ -105,82 +161,56 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
           </button>
         </div>
 
-        {loading ? (
-          <div className="text-center py-8">
-            <div className="text-xl">🔄 画像を読み込み中...</div>
-          </div>
-        ) : (
-          <>
-            {/* 画像グリッド */}
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
-              {images.map((image, index) => (
-                <div
-                  key={index}
-                  className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
-                    selectedImage?.url === image.url
-                      ? 'border-blue-500 ring-2 ring-blue-200'
-                      : 'border-gray-200 hover:border-gray-400'
-                  }`}
-                  onClick={() => handleImageClick(image)}
-                >
-                  <img
-                    src={image.url}
-                    alt={image.alt}
-                    className="w-full h-24 object-cover"
-                    onError={(e) => {
-                      e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgZmlsbD0iI0NDQ0NDQyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7nlKjmiLfliLDvvIzmnKznm7TmlrnvvIzlm77niYc8L3RleHQ+PC9zdmc+';
-                    }}
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1">
-                    <div className="truncate text-xs">{image.alt}</div>
-                  </div>
-                  {selectedImage?.url === image.url && (
-                    <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
-                      ✓
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        {/* 画像アップロード */}
+        <div className="mb-6 p-4 bg-green-50 rounded-lg">
+          <p className="text-sm text-gray-600 mb-2">
+            ダウンロードした画像をアップロードしてください
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
+          >
+            <span>📁</span>
+            <span>画像をアップロード</span>
+          </button>
+        </div>
 
-            {/* 選択された画像のプレビュー */}
-            {selectedImage && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <h3 className="font-bold mb-2">選択された画像:</h3>
-                <div className="flex items-center space-x-4">
-                  <img
-                    src={selectedImage.url}
-                    alt={selectedImage.alt}
-                    className="w-24 h-24 object-cover rounded"
-                  />
-                  <div>
-                    <div className="font-medium">{selectedImage.alt}</div>
-                    <div className="text-sm text-gray-600">
-                      出典: {selectedImage.author}
-                    </div>
-                  </div>
+        {/* 選択された画像のプレビュー */}
+        {selectedImage && (
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-bold mb-2 text-green-600">✅ 画像が選択されました:</h3>
+            <div className="flex items-center space-x-4">
+              <img
+                src={selectedImage.url}
+                alt={selectedImage.alt}
+                className="w-32 h-32 object-cover rounded border-4 border-green-400"
+              />
+              <div>
+                <div className="font-medium">{selectedImage.alt}</div>
+                <div className="text-sm text-gray-600">
+                  出典: {selectedImage.author}
                 </div>
               </div>
-            )}
-
-            {/* ボタン */}
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={!selectedImage}
-                className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg"
-              >
-                この画像を使用
-              </button>
             </div>
-          </>
+          </div>
         )}
+
+        {/* ボタン */}
+        <div className="flex justify-end space-x-3">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+          >
+            完了
+          </button>
+        </div>
       </div>
     </div>
   );

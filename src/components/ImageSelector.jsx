@@ -16,20 +16,18 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
   const loadImages = async () => {
     setLoading(true);
     try {
+      // キーワードを単語化（「副業の始め方」→「副業」）
+      const simplifiedKeyword = keyword.split(/[のをに、。\s]+/)[0] || keyword;
+      console.log(`🔍 キーワード単語化: ${keyword} → ${simplifiedKeyword}`);
+      
       // いらすとやの検索URLを生成
-      const searchUrl = irasutoyaService.generateSearchUrl(keyword);
+      const searchUrl = irasutoyaService.generateSearchUrl(simplifiedKeyword);
       console.log('🔍 いらすとや検索URL:', searchUrl);
-      
-      // 手動で設定された画像を取得
-      const manualImages = irasutoyaService.getManualUrls(keyword);
-      
-      // フォールバック画像も追加
-      const fallbackImages = irasutoyaService.getFallbackImages(keyword, 10);
-      
-      // 全ての画像を結合（より多くの画像を提供）
-      const allImages = irasutoyaService.getAllAvailableImages(keyword, 20);
-      
-      setImages(allImages);
+      // 実データ（スクレイピング）を取得
+      const fetched = await irasutoyaService.fetchImages(simplifiedKeyword, 20);
+      console.log('📦 取得した画像データ:', fetched);
+      console.log('📦 最初の画像:', fetched[0]);
+      setImages(fetched);
     } catch (error) {
       console.error('❌ 画像読み込みエラー:', error);
       setImages([]);
@@ -86,6 +84,10 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
           </div>
         ) : (
           <>
+            <div className="mb-4 text-sm text-gray-600">
+              📊 {images.length}件の画像が見つかりました
+            </div>
+            
             {/* 画像グリッド */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
               {images.map((image, index) => (
