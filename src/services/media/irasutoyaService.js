@@ -120,6 +120,40 @@ class IrasutoyaService {
     }));
   }
 
+  // 全キーワード用の汎用画像一覧を取得
+  getAllAvailableImages(keyword, count = 20) {
+    const allImages = [];
+    
+    // キーワード固有の画像
+    const specificImages = this.getManualUrls(keyword);
+    allImages.push(...specificImages);
+    
+    // 汎用画像を追加
+    const generalImages = [
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general1.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general2.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general3.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general4.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general5.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general6.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general7.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general8.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general9.jpg',
+      'https://4.bp.blogspot.com/-K7JmF5vYz8s/Xo5J8Q2ZtCI/AAAAAAABX3Y/9QrQYqQYqQY/s400/general10.jpg'
+    ];
+
+    generalImages.forEach((url, index) => {
+      allImages.push({
+        url: url,
+        alt: `${keyword} - 汎用画像 ${index + 1}`,
+        source: 'irasutoya_general',
+        author: 'いらすとや'
+      });
+    });
+
+    return allImages.slice(0, count);
+  }
+
   // フォールバック画像（いらすとやの一般的な画像を使用）
   getFallbackImages(keyword, count) {
     const fallbackUrls = [

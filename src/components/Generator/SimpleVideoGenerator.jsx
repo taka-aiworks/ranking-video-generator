@@ -23,6 +23,7 @@ import trendAnalyzer from '../../services/api/trendAnalyzer.js';
 import voicevoxService from '../../services/tts/voicevox.js';
 
 import { useImageIntegration } from '../../hooks/useImageIntegration.js';
+import ImageSelector from '../ImageSelector.jsx';
 
 
 
@@ -37,6 +38,8 @@ const SimpleVideoGenerator = () => {
   const [tab, setTab] = useState('input');
 
   const [useIrasutoya, setUseIrasutoya] = useState(true); // いらすとや使用フラグ（デフォルトON）
+  const [showImageSelector, setShowImageSelector] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   
 
@@ -1153,6 +1156,15 @@ const SimpleVideoGenerator = () => {
                       <span>{useIrasutoya ? 'いらすとや' : 'Unsplash'}</span>
                     </button>
 
+                    {/* 画像選択ボタン */}
+                    <button
+                      onClick={() => setShowImageSelector(true)}
+                      className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg flex items-center space-x-2"
+                    >
+                      <span>🖼️</span>
+                      <span>画像選択</span>
+                    </button>
+
                     {!isEditingScript ? (
 
                       <button
@@ -1265,6 +1277,12 @@ const SimpleVideoGenerator = () => {
                   isEditing={isEditingScript}
 
                   onUpdate={setEditableScript}
+
+                  showImageSelector={showImageSelector}
+
+                  setShowImageSelector={setShowImageSelector}
+
+                  keyword={keyword}
 
                 />
 
@@ -1470,7 +1488,7 @@ const SimpleVideoGenerator = () => {
 
 // 汎用スクリプト表示コンポーネント（簡潔版）
 
-const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
+const UniversalScriptDisplay = ({ script, isEditing, onUpdate, showImageSelector, setShowImageSelector, keyword }) => {
 
   if (!script) return null;
 
@@ -1894,6 +1912,20 @@ const UniversalScriptDisplay = ({ script, isEditing, onUpdate }) => {
         </div>
 
       </div>
+
+      {/* 画像選択モーダル */}
+      {showImageSelector && (
+        <ImageSelector
+          keyword={keyword}
+          onImageSelect={(image) => {
+            setSelectedImage(image);
+            setShowImageSelector(false);
+            // 選択された画像を動画生成に反映
+            console.log('選択された画像:', image);
+          }}
+          onClose={() => setShowImageSelector(false)}
+        />
+      )}
 
     </div>
 
