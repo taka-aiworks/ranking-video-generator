@@ -17,7 +17,8 @@ class VideoComposer {
     this.narrationSource = null;
     this.showDebugOverlay = false; // デフォルトはオフ
     this._frameToggle = false; // フレーム強制更新用トグル
-    this.dataUrlCanvasCache = new Map(); // DataURL→Canvas キャッシュ
+    this.dataUrlCanvasCache = new Map(); // DataURL→原寸/縮小キャンバス
+    this.fittedCanvasCache = new Map();  // (DataURL, WxH, mode, zoom, ox, oy)→フィット済みキャンバス
   }
 
   // BGM読み込み
@@ -431,19 +432,19 @@ class VideoComposer {
         // スライド描画開始ログを削除（ループ軽減）
         const slideImage = this.getSlideImage(slideImages, i);
         if (slideAudio.type === 'title') {
-          this.renderTitleSlide(videoDesign, slideImage);
+          await this.renderTitleSlide(videoDesign, slideImage);
           this.drawDebugOverlay(i+1, totalSlides);
           this.nudgeFrame();
           await this.flushFrame();
         } else if (slideAudio.type === 'item') {
           const itemIndex = i - 1;
           const item = videoDesign.items[itemIndex];
-          if (item) this.renderItemSlide(item, itemIndex + 1, 0, slideImage);
+          if (item) await this.renderItemSlide(item, itemIndex + 1, 0, slideImage);
           this.drawDebugOverlay(i+1, totalSlides);
           this.nudgeFrame();
           await this.flushFrame();
         } else if (slideAudio.type === 'summary') {
-          this.renderSummarySlide(videoDesign, slideImage);
+          await this.renderSummarySlide(videoDesign, slideImage);
           this.drawDebugOverlay(i+1, totalSlides);
           this.nudgeFrame();
           await this.flushFrame();
@@ -459,13 +460,13 @@ class VideoComposer {
         while (true) {
           // 再描画（同じスライドを毎フレーム）
           if (slideAudio.type === 'title') {
-            this.renderTitleSlide(videoDesign, slideImageLoop);
+            await this.renderTitleSlide(videoDesign, slideImageLoop);
           } else if (slideAudio.type === 'item') {
             const itemIndex = i - 1;
             const item = videoDesign.items[itemIndex];
-            if (item) this.renderItemSlide(item, itemIndex + 1, 0, slideImageLoop);
+            if (item) await this.renderItemSlide(item, itemIndex + 1, 0, slideImageLoop);
           } else if (slideAudio.type === 'summary') {
-            this.renderSummarySlide(videoDesign, slideImageLoop);
+            await this.renderSummarySlide(videoDesign, slideImageLoop);
           }
           this.nudgeFrame();
           pumpFrame();
@@ -794,33 +795,101 @@ class VideoComposer {
   }
 
   // Data URL画像描画（アップロード画像用）
-  async drawDataUrlImage(dataUrl, x, y, width, height) {
+  async drawDataUrlImage(dataUrl, x, y, width, height, options = {}) {
     try {
-      // キャッシュされたキャンバスがあればそれを使う（チカチカ防止）
-      let cached = this.dataUrlCanvasCache.get(dataUrl);
-      if (!cached) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        const loaded = new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-        });
-        img.src = dataUrl;
-        await loaded;
-        // 一度だけビットマップ化して保持
-        const off = document.createElement('canvas');
-        off.width = img.naturalWidth || img.width;
-        off.height = img.naturalHeight || img.height;
-        const offCtx = off.getContext('2d');
-        offCtx.drawImage(img, 0, 0);
-        cached = off;
-        this.dataUrlCanvasCache.set(dataUrl, cached);
-      }
-      this.ctx.drawImage(cached, x, y, width, height);
+      const fitMode = options.mode || 'cover'; // 'cover' | 'contain'
+      const zoom = Math.min(3, Math.max(0.5, options.zoom || 1.0));
+      const offsetX = Math.min(1, Math.max(0, options.offsetX ?? 0.5)); // 0..1 中心
+      const offsetY = Math.min(1, Math.max(0, options.offsetY ?? 0.5));
+
+      // 1) ベースキャンバス（最大辺を制限してダウンサンプルキャッシュ）
+      const baseCanvas = await this.getBaseCanvasFromDataUrl(dataUrl);
+      // 2) 目的サイズへフィット（cover/contain + 中心オフセット + ズーム）
+      const fitted = this.getFittedCanvas(baseCanvas, width, height, { mode: fitMode, zoom, offsetX, offsetY, key: dataUrl });
+      this.ctx.drawImage(fitted, x, y, width, height);
     } catch (error) {
       console.warn('⚠️ DataURL画像描画失敗:', error);
       this.drawImagePlaceholder(x, y, width, height, '画像');
     }
+  }
+
+  async getBaseCanvasFromDataUrl(dataUrl) {
+    let cached = this.dataUrlCanvasCache.get(dataUrl);
+    if (cached) return cached;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    img.src = dataUrl;
+    await loaded;
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    const maxEdge = 2048; // メモリ・速度対策
+    const scale = Math.min(1, maxEdge / Math.max(srcW, srcH));
+    const outW = Math.max(1, Math.round(srcW * scale));
+    const outH = Math.max(1, Math.round(srcH * scale));
+    const off = document.createElement('canvas');
+    off.width = outW;
+    off.height = outH;
+    const offCtx = off.getContext('2d');
+    offCtx.imageSmoothingEnabled = true;
+    offCtx.imageSmoothingQuality = 'high';
+    offCtx.drawImage(img, 0, 0, outW, outH);
+    this.dataUrlCanvasCache.set(dataUrl, off);
+    return off;
+  }
+
+  getFittedCanvas(baseCanvas, targetW, targetH, opts) {
+    const mode = opts.mode || 'cover';
+    const zoom = Math.min(3, Math.max(0.5, opts.zoom || 1.0));
+    const ox = Math.min(1, Math.max(0, opts.offsetX ?? 0.5));
+    const oy = Math.min(1, Math.max(0, opts.offsetY ?? 0.5));
+    const cacheKey = `${opts.key}|${targetW}x${targetH}|${mode}|${zoom}|${ox}|${oy}`;
+    const cached = this.fittedCanvasCache.get(cacheKey);
+    if (cached) return cached;
+
+    const sw = baseCanvas.width;
+    const sh = baseCanvas.height;
+    const srcAspect = sw / sh;
+    const dstAspect = targetW / targetH;
+
+    let drawW, drawH;
+    if (mode === 'contain') {
+      if (srcAspect > dstAspect) {
+        drawW = targetW * zoom;
+        drawH = drawW / srcAspect;
+      } else {
+        drawH = targetH * zoom;
+        drawW = drawH * srcAspect;
+      }
+    } else { // cover
+      if (srcAspect > dstAspect) {
+        // 幅が余る → 高さ基準で拡大
+        drawH = targetH * zoom;
+        drawW = drawH * srcAspect;
+      } else {
+        // 高さが余る → 幅基準で拡大
+        drawW = targetW * zoom;
+        drawH = drawW / srcAspect;
+      }
+    }
+
+    // 中心オフセット（0..1）で切り取り位置を調整
+    const dx = (targetW - drawW) * ox;
+    const dy = (targetH - drawH) * oy;
+
+    const out = document.createElement('canvas');
+    out.width = targetW;
+    out.height = targetH;
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(baseCanvas, dx, dy, drawW, drawH);
+
+    this.fittedCanvasCache.set(cacheKey, out);
+    return out;
   }
 
   // プレースホルダー画像描画
