@@ -1230,6 +1230,16 @@ const SimpleVideoGenerator = () => {
                     >
                       URL設定
                     </button>
+                    <button
+                      onClick={() => {
+                        const ngrokUrl = 'https://informative-kerstin-dictatorially.ngrok-free.dev';
+                        localStorage.setItem('voicevox_url', ngrokUrl);
+                        alert(`ngrok URL設定完了: ${ngrokUrl}\n\nページを再読み込みしてください。`);
+                      }}
+                      className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded text-sm"
+                    >
+                      ngrok設定
+                    </button>
                   </div>
                 </div>
                 

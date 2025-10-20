@@ -1,11 +1,20 @@
 // src/services/tts/voicevox.js - VOICEVOX local TTS client (browser-side)
 
 // VoiceVOXサーバーURLを取得（設定可能）
+function normalizeUrl(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let url = raw.trim();
+  // 末尾スラッシュ除去
+  if (url.endsWith('/')) url = url.slice(0, -1);
+  // プロトコル補完
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  return url;
+}
 const getVoiceVoxUrl = () => {
   // ローカルストレージから設定されたURLを取得
   const savedUrl = localStorage.getItem('voicevox_url');
   if (savedUrl) {
-    return savedUrl;
+    return normalizeUrl(savedUrl);
   }
   
   // デフォルト: 動的にVoiceVOXサーバーURLを決定（他のデバイスからアクセス可能）
@@ -14,7 +23,8 @@ const getVoiceVoxUrl = () => {
   return `http://${serverHost}:50021`;
 };
 
-const VOICEVOX_BASE_URL = getVoiceVoxUrl();
+// 常に最新のURLを参照するためのヘルパー
+const getBaseUrl = () => getCurrentVoiceVoxUrl();
 
 // VoiceVOXのURLを設定する関数
 export function setVoiceVoxUrl(url) {
@@ -23,21 +33,36 @@ export function setVoiceVoxUrl(url) {
 }
 
 // VoiceVOXのURLを取得する関数
-export function getVoiceVoxUrl() {
-  return getVoiceVoxUrl();
+export function getCurrentVoiceVoxUrl() {
+  const savedUrl = localStorage.getItem('voicevox_url');
+  if (savedUrl) {
+    return savedUrl;
+  }
+  
+  // デフォルト: 動的にVoiceVOXサーバーURLを決定
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const serverHost = isLocalhost ? 'localhost' : window.location.hostname;
+  return `http://${serverHost}:50021`;
 }
 
 // VoiceVOXサーバーの状態を確認
 export async function checkVoiceVoxStatus() {
   try {
-    const response = await fetch(`${VOICEVOX_BASE_URL}/speakers`);
-    if (response.ok) {
-      console.log('✅ VoiceVOXサーバー接続成功:', VOICEVOX_BASE_URL);
-      return true;
-    } else {
+    const url = `${getBaseUrl()}/speakers`;
+    const response = await fetch(url);
+    if (!response.ok) {
       console.error('❌ VoiceVOXサーバー応答エラー:', response.status);
       return false;
     }
+    // コンテンツがJSONか検証（ngrokランディングを弾く）
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      console.error('❌ 予期しない応答（JSONではありません）。ngrokのランディングを解除してください:', url);
+      return false;
+    }
+    await response.json();
+    console.log('✅ VoiceVOXサーバー接続成功:', getBaseUrl());
+    return true;
   } catch (error) {
     console.error('❌ VoiceVOXサーバー接続エラー:', error);
     console.log('💡 VoiceVOXが起動していない可能性があります。');
@@ -57,7 +82,7 @@ async function fetchJson(url, options) {
 }
 
 export async function fetchSpeakers() {
-	return await fetchJson(`${VOICEVOX_BASE_URL}/speakers`);
+	return await fetchJson(`${getBaseUrl()}/speakers`);
 }
 
 export async function synthesizeToBlob(text, speakerStyleId, queryOverrides = {}) {
@@ -69,13 +94,13 @@ export async function synthesizeToBlob(text, speakerStyleId, queryOverrides = {}
 	}
 
 	const audioQuery = await fetchJson(
-		`${VOICEVOX_BASE_URL}/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerStyleId}`,
+		`${getBaseUrl()}/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerStyleId}`,
 		{ method: 'POST' }
 	);
 
 	const mergedQuery = { ...audioQuery, ...queryOverrides };
 
-	const res = await fetch(`${VOICEVOX_BASE_URL}/synthesis?speaker=${speakerStyleId}`, {
+	const res = await fetch(`${getBaseUrl()}/synthesis?speaker=${speakerStyleId}`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(mergedQuery)
