@@ -3,16 +3,33 @@
 
 class LocalImageService {
   constructor() {
-    this.baseUrl = 'http://localhost:3001'; // スクレイピングサーバーのURL
+    // 動的にサーバーURLを決定（同じWiFi内のデバイスからアクセス可能）
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const serverHost = isLocalhost ? 'localhost' : window.location.hostname;
+    this.baseUrl = `http://${serverHost}:3001`; // スクレイピングサーバーのURL
     this.cache = new Map();
     this.cacheExpiry = 5 * 60 * 1000; // 5分間キャッシュ
-    console.log('🏠 ローカル画像サービス初期化完了');
+    console.log('🏠 ローカル画像サービス初期化完了:', this.baseUrl);
   }
 
   // キャッシュをクリア
   clearCache() {
     this.cache.clear();
     console.log('🗑️ ローカル画像キャッシュクリア');
+  }
+
+  // サーバー状態を確認
+  async checkServerStatus() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`);
+      const data = await response.json();
+      console.log('✅ サーバー状態:', data.message);
+      return true;
+    } catch (error) {
+      console.error('❌ サーバー接続エラー:', error);
+      console.log('💡 サーバーが起動していない可能性があります。サーバーを起動してください。');
+      return false;
+    }
   }
 
   // API呼び出しのヘルパー関数

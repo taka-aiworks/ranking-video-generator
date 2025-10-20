@@ -47,6 +47,12 @@ const SimpleVideoGenerator = () => {
   const [showSlideImageSelector, setShowSlideImageSelector] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(null);
   const [slideImages, setSlideImages] = useState({}); // スライド別画像
+  
+  // === 動画設定 ===
+  const [videoDuration, setVideoDuration] = useState(60); // デフォルト60秒
+  const [videoWidth, setVideoWidth] = useState(1080);
+  const [videoHeight, setVideoHeight] = useState(1920);
+  const [isEditingVideoSettings, setIsEditingVideoSettings] = useState(false);
 
   
   
@@ -701,7 +707,7 @@ const SimpleVideoGenerator = () => {
 
 
 
-      const optimalDuration = baseDesign.duration || contentAnalyzer.calculateOptimalDuration(keyword, 'auto', format);
+      const optimalDuration = videoDuration || baseDesign.duration || contentAnalyzer.calculateOptimalDuration(keyword, 'auto', format);
 
 
 
@@ -745,8 +751,16 @@ const SimpleVideoGenerator = () => {
         setProgress(50);
       }
       
-      // Canvas初期化
-      videoComposer.initCanvas(canvasRef, audioEnhancedDesign);
+      // Canvas初期化（設定されたサイズを使用）
+      const videoDesignWithSettings = {
+        ...audioEnhancedDesign,
+        canvas: {
+          width: videoWidth,
+          height: videoHeight,
+          backgroundColor: "#ffffff"
+        }
+      };
+      videoComposer.initCanvas(canvasRef, videoDesignWithSettings);
 
       setStatus(`🎬 ${optimalDuration}秒動画を生成中...`);
 
@@ -768,7 +782,7 @@ const SimpleVideoGenerator = () => {
 
       const generatedVideo = await videoComposer.generateVideoWithImages(
 
-        audioEnhancedDesign,
+        videoDesignWithSettings,
 
         slideImages || {},
 
@@ -1186,7 +1200,50 @@ const SimpleVideoGenerator = () => {
               
               {/* 🆕 音声設定 */}
               <div className="mt-6">
-                <h3 className="text-lg font-bold mb-2">🎙️ 音声設定（VOICEVOX）</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">🎙️ 音声設定（VOICEVOX）</h3>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={async () => {
+                        const { checkVoiceVoxStatus } = await import('../../services/tts/voicevox.js');
+                        const isConnected = await checkVoiceVoxStatus();
+                        if (isConnected) {
+                          alert('✅ VoiceVOXサーバーに接続できています');
+                        } else {
+                          alert('❌ VoiceVOXサーバーに接続できません\n\n確認事項:\n1. VoiceVOXアプリが起動している\n2. 外部連携が許可されている\n3. ポート50021で起動している');
+                        }
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm"
+                    >
+                      接続確認
+                    </button>
+                    <button
+                      onClick={() => {
+                        const currentUrl = localStorage.getItem('voicevox_url') || 'http://localhost:50021';
+                        const newUrl = prompt('VoiceVOXサーバーのURLを入力してください:', currentUrl);
+                        if (newUrl && newUrl.trim()) {
+                          localStorage.setItem('voicevox_url', newUrl.trim());
+                          alert(`VoiceVOX URL設定完了: ${newUrl.trim()}\n\nページを再読み込みしてください。`);
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-sm"
+                    >
+                      URL設定
+                    </button>
+                  </div>
+                </div>
+                
+                {/* VoiceVOX URL表示 */}
+                <div className="mb-4 p-3 bg-gray-800 rounded-lg">
+                  <div className="text-sm text-gray-300 mb-1">現在のVoiceVOX URL:</div>
+                  <div className="text-yellow-400 font-mono text-sm">
+                    {localStorage.getItem('voicevox_url') || 'http://localhost:50021 (デフォルト)'}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    他のデバイスからアクセスする場合は、PCのIPアドレスを使用してください（例: http://192.168.1.100:50021）
+                  </div>
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-300 mb-1">話者（名前 - スタイル）</label>
@@ -1419,7 +1476,7 @@ const SimpleVideoGenerator = () => {
                 />
 
                 {/* まとめスライド - アイテムスライドと同じ形式 */}
-                {isEditingScript ? editableScript : generatedScript ? (
+                {(isEditingScript ? editableScript : generatedScript) ? (
                   <div className="border rounded-lg p-4">
                     <h3 className="font-bold mb-2">
                       スライド{(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 2 : 2}: まとめ
@@ -1436,7 +1493,7 @@ const SimpleVideoGenerator = () => {
                       <div className="flex-1">
                         <p className="text-sm text-white mb-1">{slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1]?.alt || '画像'}</p>
                         <p className="text-xs text-gray-400">カテゴリ: {slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1]?.category || 'イベント'}</p>
-                      </div>
+              </div>
                       <button
                         onClick={() => {
                           setCurrentSlideIndex((isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1);
@@ -1451,22 +1508,101 @@ const SimpleVideoGenerator = () => {
 
                 {/* 動画設定 - 一番下に配置 */}
                 <div className="bg-white/5 rounded-lg p-4 mt-6">
-                  <h3 className="font-bold text-lg mb-3">⚙️ 動画設定</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-400">時間:</span>
-                      <span className="text-white ml-2">{calculateVideoDuration(isEditingScript ? editableScript : generatedScript)}秒</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">サイズ:</span>
-                      <span className="text-white ml-2">1080×1920</span>
-                    </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-lg">⚙️ 動画設定</h3>
+                    <button
+                      onClick={() => setIsEditingVideoSettings(!isEditingVideoSettings)}
+                      className="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-sm"
+                    >
+                      {isEditingVideoSettings ? '完了' : '編集'}
+                    </button>
                   </div>
+                  
+                  {!isEditingVideoSettings ? (
+                    // 表示モード
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-400">時間:</span>
+                        <span className="text-white ml-2">{calculateVideoDuration(isEditingScript ? editableScript : generatedScript)}秒</span>
+                        {videoDuration !== calculateVideoDuration(isEditingScript ? editableScript : generatedScript) && (
+                          <span className="text-yellow-400 ml-2">(設定: {videoDuration}秒)</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">サイズ:</span>
+                        <span className="text-white ml-2">{videoWidth}×{videoHeight}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    // 編集モード
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-300 mb-2">動画時間（秒）</label>
+                        <input
+                          type="number"
+                          min="30"
+                          max="300"
+                          value={videoDuration}
+                          onChange={(e) => setVideoDuration(Math.max(30, Math.min(300, parseInt(e.target.value) || 30)))}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                        />
+                        <div className="text-xs text-gray-400 mt-1">30-300秒の範囲で設定</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold text-gray-300 mb-2">幅</label>
+                          <select
+                            value={videoWidth}
+                            onChange={(e) => setVideoWidth(parseInt(e.target.value))}
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                          >
+                            <option value={1080}>1080px</option>
+                            <option value={720}>720px</option>
+                            <option value={480}>480px</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-gray-300 mb-2">高さ</label>
+                          <select
+                            value={videoHeight}
+                            onChange={(e) => setVideoHeight(parseInt(e.target.value))}
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                          >
+                            <option value={1920}>1920px</option>
+                            <option value={1280}>1280px</option>
+                            <option value={720}>720px</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* 編集前後の時間比較 */}
+                  {isEditingScript && generatedScript && (
+                    <div className="mt-4 p-3 bg-blue-500/20 rounded-lg">
+                      <div className="text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-300">編集前:</span>
+                          <span className="text-blue-300 font-bold">{calculateVideoDuration(generatedScript)}秒</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-gray-300">編集後:</span>
+                          <span className="text-green-300 font-bold">{calculateVideoDuration(editableScript)}秒</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/20">
+                          <span className="text-gray-300">差:</span>
+                          <span className={`font-bold ${calculateVideoDuration(editableScript) - calculateVideoDuration(generatedScript) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {calculateVideoDuration(editableScript) - calculateVideoDuration(generatedScript) > 0 ? '+' : ''}
+                            {calculateVideoDuration(editableScript) - calculateVideoDuration(generatedScript)}秒
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-              </div>
+                  </div>
 
-            )}
+        )}
 
                   </div>
 
@@ -1569,6 +1705,20 @@ const SimpleVideoGenerator = () => {
 
                 </button>
 
+                <button 
+
+                  onClick={() => setTab('script')}
+
+                  className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg flex items-center space-x-2"
+
+                >
+
+                  <span>📝</span>
+
+                  <span>スクリプトに戻る</span>
+
+                </button>
+
               </div>
 
 
@@ -1605,26 +1755,31 @@ const SimpleVideoGenerator = () => {
 
 
 
-// 動画時間を計算する関数（45-60秒に固定）
+// 動画時間を計算する関数（実際の文章長から音声時間を計算）
 const calculateVideoDuration = (script) => {
   if (!script) return 0;
   
   let totalDuration = 0;
   
-  // タイトルスライド: 15秒
+  // タイトルスライド: 文字数から音声時間を計算（1文字約0.15秒）
   if (script.title) {
-    totalDuration += 15;
+    const titleLength = typeof script.title === 'string' ? script.title.length : 0;
+    totalDuration += Math.max(3, titleLength * 0.15); // 最低3秒
   }
   
-  // アイテムスライド: 各15秒（45秒ちょうどになるように）
+  // アイテムスライド: 各アイテムの文字数から音声時間を計算
   if (script.items && script.items.length > 0) {
-    totalDuration += script.items.length * 15;
+    script.items.forEach(item => {
+      const itemText = item.text || item.main || item.name || '';
+      const itemLength = typeof itemText === 'string' ? itemText.length : 0;
+      totalDuration += Math.max(2, itemLength * 0.15); // 最低2秒
+    });
   }
   
-  // まとめスライド: 15秒
-  totalDuration += 15;
+  // まとめスライド: 固定で5秒
+  totalDuration += 5;
   
-  return totalDuration;
+  return Math.round(totalDuration);
 };
 
 // 汎用スクリプト表示コンポーネント（簡潔版）
@@ -1724,8 +1879,8 @@ const UniversalScriptDisplay = ({
       </div>
             <div className="flex items-center space-x-3">
               <div>
-                <div className="text-sm text-white">{slideImages[0].alt}</div>
-                <div className="text-xs text-gray-400">カテゴリ: {slideImages[0].category}</div>
+                <div className="text-sm text-white">{typeof slideImages[0]?.alt === 'string' ? slideImages[0].alt : JSON.stringify(slideImages[0]?.alt)}</div>
+                <div className="text-xs text-gray-400">カテゴリ: {typeof slideImages[0]?.category === 'string' ? slideImages[0].category : JSON.stringify(slideImages[0]?.category)}</div>
               </div>
               <img 
                 src={slideImages[0].url} 
@@ -1996,8 +2151,8 @@ const UniversalScriptDisplay = ({
                                 className="w-16 h-16 object-cover rounded"
                               />
                               <div>
-                                <div className="text-sm text-white">{slideImages[index + 1].alt}</div>
-                                <div className="text-xs text-gray-400">カテゴリ: {slideImages[index + 1].category}</div>
+                                <div className="text-sm text-white">{typeof slideImages[index + 1]?.alt === 'string' ? slideImages[index + 1].alt : JSON.stringify(slideImages[index + 1]?.alt)}</div>
+                                <div className="text-xs text-gray-400">カテゴリ: {typeof slideImages[index + 1]?.category === 'string' ? slideImages[index + 1].category : JSON.stringify(slideImages[index + 1]?.category)}</div>
                               </div>
                             </div>
                           </div>
@@ -2167,7 +2322,7 @@ const UniversalScriptDisplay = ({
               {script.items && (
                 <div className={`border rounded-lg p-4 ${slideImages[script.items.length + 1] ? 'border-green-500 border-4' : ''}`}>
                 <h3 className="font-bold mb-2">
-                    スライド{script.items.length + 2}: まとめ
+                    スライド{typeof script.items.length === 'number' ? script.items.length + 2 : JSON.stringify(script.items.length + 2)}: まとめ
                     {slideImages[script.items.length + 1] && <span className="ml-2 text-green-500">✓</span>}
                 </h3>
                   <p className="text-sm text-gray-600 mb-3">この動画がいいと思ったらチャンネル登録・高評価お願いします</p>
@@ -2177,7 +2332,7 @@ const UniversalScriptDisplay = ({
                   )}
                   <button
                     onClick={() => {
-                        setCurrentSlideIndex(script.items.length + 1);
+                        setCurrentSlideIndex(typeof script.items.length === 'number' ? script.items.length + 1 : 0);
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                   >
@@ -2206,9 +2361,11 @@ const UniversalScriptDisplay = ({
         <SlideImageSelector
           slideIndex={currentSlideIndex}
           slideText={
-            currentSlideIndex === 0 ? script.title :
+            currentSlideIndex === 0 ? (typeof script.title === 'string' ? script.title : JSON.stringify(script.title)) :
             currentSlideIndex <= (script.items ? script.items.length : 0) ?
+              (typeof (script.items[currentSlideIndex - 1]?.text || script.items[currentSlideIndex - 1]?.main || script.items[currentSlideIndex - 1]?.name) === 'string' ? 
               (script.items[currentSlideIndex - 1]?.text || script.items[currentSlideIndex - 1]?.main || script.items[currentSlideIndex - 1]?.name) :
+                JSON.stringify(script.items[currentSlideIndex - 1]?.text || script.items[currentSlideIndex - 1]?.main || script.items[currentSlideIndex - 1]?.name)) :
             'この動画がいいと思ったらチャンネル登録・高評価お願いします'
           }
           currentImage={slideImages[currentSlideIndex]}
