@@ -38,6 +38,7 @@ const SimpleVideoGenerator = () => {
 
   const [format, setFormat] = useState('short');
 
+
   const [tab, setTab] = useState('input');
 
   const [useIrasutoya, setUseIrasutoya] = useState(true); // いらすとや使用フラグ（デフォルトON）
@@ -72,7 +73,7 @@ const SimpleVideoGenerator = () => {
   const [editableScript, setEditableScript] = useState(null);
 
   // === 🆕 TTS設定 ===
-  const [ttsSpeakerId, setTtsSpeakerId] = useState(1); // VOICEVOX styles.id
+  const [ttsSpeakerId, setTtsSpeakerId] = useState(2); // VOICEVOX styles.id (四国めたんのノーマル)
   const [ttsSpeed, setTtsSpeed] = useState(1.0); // 0.5 - 2.0
   const [ttsSpeakers, setTtsSpeakers] = useState([]); // {label, styleId}
 
@@ -90,7 +91,7 @@ const SimpleVideoGenerator = () => {
         setTtsSpeakers(list);
       } catch (_) {
         // 失敗時はデフォルトのみ
-        setTtsSpeakers([{ label: 'ずんだもん - ノーマル', styleId: 1 }]);
+        setTtsSpeakers([{ label: '四国めたん - ノーマル', styleId: 2 }]);
       }
     })();
   }, []);
@@ -404,9 +405,28 @@ const SimpleVideoGenerator = () => {
         }
       }
       
-      // まとめスライドの画像を挿入
+      // まとめスライドの画像を挿入（YouTube関連を優先）
       const summaryIndex = videoDesign.items ? videoDesign.items.length + 1 : 1;
-      const summaryImage = await selectImageForSlide(summaryIndex, 'この動画がいいと思ったらチャンネル登録・高評価お願いします');
+      
+      // YouTube関連の画像を優先的に検索
+      const youtubeKeywords = ['youtuber', 'mask', 'sunglass', 'イベント'];
+      let summaryImage = null;
+      
+      for (const keyword of youtubeKeywords) {
+        const result = await localImageService.searchImages(keyword, 10);
+        if (result.success && result.images.length > 0) {
+          const images = localImageService.normalizeImages(result.images);
+          summaryImage = images[Math.floor(Math.random() * images.length)];
+          console.log(`✅ まとめスライド画像挿入 (${keyword}):`, summaryImage.alt);
+          break;
+        }
+      }
+      
+      // 見つからない場合は通常の選択
+      if (!summaryImage) {
+        summaryImage = await selectImageForSlide(summaryIndex, 'この動画がいいと思ったらチャンネル登録・高評価お願いします');
+      }
+      
       if (summaryImage) {
         newSlideImages[summaryIndex] = summaryImage;
         console.log('✅ まとめスライド画像挿入:', summaryImage.alt);
@@ -425,11 +445,11 @@ const SimpleVideoGenerator = () => {
   const selectImageForSlide = useCallback(async (slideIndex, slideText) => {
     try {
       if (!slideText) return null;
-      
+
       // カテゴリを判定
       const category = detectCategoryFromText(slideText);
       console.log(`🎯 スライド${slideIndex}のカテゴリ判定: ${category}`);
-      
+
       // ローカル画像から検索
       const result = await localImageService.searchImages(category, 50);
       if (result.success && result.images.length > 0) {
@@ -438,7 +458,7 @@ const SimpleVideoGenerator = () => {
         console.log(`✅ ローカル画像選択: ${selectedImage.alt}`);
         return selectedImage;
       }
-      
+
       // フォールバック: いらすとやサービス
       const keyword = extractKeywordFromSlide(slideText);
       const fallbackImages = await irasutoyaService.fetchImages(keyword, 10);
@@ -447,7 +467,7 @@ const SimpleVideoGenerator = () => {
         console.log(`✅ フォールバック画像選択: ${selectedImage.alt}`);
         return selectedImage;
       }
-      
+
       return null;
     } catch (error) {
       console.error('❌ 画像選択エラー:', error);
@@ -458,6 +478,11 @@ const SimpleVideoGenerator = () => {
   // === 🎯 テキストからカテゴリを判定 ===
   const detectCategoryFromText = useCallback((text) => {
     if (!text) return 'その他';
+    
+    // まとめスライドの場合はイベントカテゴリを返す
+    if (text.includes('まとめ') || text.includes('summary') || text.includes('チャンネル登録') || text.includes('高評価')) {
+      return 'イベント';
+    }
     
     const categoryKeywords = {
       '政治': ['政治', '政治家', '総理大臣', '大臣', '国会', '議会', '選挙', '投票'],
@@ -498,7 +523,7 @@ const SimpleVideoGenerator = () => {
     }
     
     if (slideText.includes('まとめ') || slideText.includes('summary') || slideText.includes('チャンネル登録') || slideText.includes('高評価')) {
-      return 'チャンネル登録';
+      return 'イベント';
     }
     
     const contentKeywords = {
@@ -732,7 +757,7 @@ const SimpleVideoGenerator = () => {
       // 目標尺に合わせてナレーション再生速度を微調整（±15%）
       const totalSec = (audioEnhancedDesign.slideAudios || []).reduce((s,a)=> s + (a.duration || 0), 0);
       const actualDuration = Math.round(totalSec);
-      const targetSec = format === 'short' ? 30 : format === 'medium' ? 60 : totalSec;
+      const targetSec = format === 'short' ? 45 : format === 'medium' ? 60 : totalSec;
       const playbackRate = Math.min(1.15, Math.max(0.85, totalSec / Math.max(10, targetSec)));
 
       // デバッグ: 画像データを確認
@@ -1167,7 +1192,7 @@ const SimpleVideoGenerator = () => {
                     <label className="block text-sm text-gray-300 mb-1">話者（名前 - スタイル）</label>
                     <select
                       value={ttsSpeakerId}
-                      onChange={(e) => setTtsSpeakerId(Number(e.target.value) || 1)}
+                      onChange={(e) => setTtsSpeakerId(Number(e.target.value) || 2)}
                       className="w-full px-3 py-2 bg-gray-800 text-white border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     >
                       {ttsSpeakers.map(opt => (
@@ -1393,6 +1418,52 @@ const SimpleVideoGenerator = () => {
 
                 />
 
+                {/* まとめスライド - アイテムスライドと同じ形式 */}
+                {isEditingScript ? editableScript : generatedScript ? (
+                  <div className="border rounded-lg p-4">
+                    <h3 className="font-bold mb-2">
+                      スライド{(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 2 : 2}: まとめ
+                      {slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1] && <span className="ml-2 text-green-500">✓</span>}
+                    </h3>
+                    <div className="flex space-x-2">
+                      {slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1] && (
+                        <img 
+                          src={slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1].url} 
+                          alt={slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1].alt} 
+                          className="w-16 h-16 object-cover rounded" 
+                        />
+                      )}
+                      <div className="flex-1">
+                        <p className="text-sm text-white mb-1">{slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1]?.alt || '画像'}</p>
+                        <p className="text-xs text-gray-400">カテゴリ: {slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1]?.category || 'イベント'}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentSlideIndex((isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1);
+                        }}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        {slideImages[(isEditingScript ? editableScript : generatedScript).items ? (isEditingScript ? editableScript : generatedScript).items.length + 1 : 1] ? '変更' : '選択'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* 動画設定 - 一番下に配置 */}
+                <div className="bg-white/5 rounded-lg p-4 mt-6">
+                  <h3 className="font-bold text-lg mb-3">⚙️ 動画設定</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400">時間:</span>
+                      <span className="text-white ml-2">{calculateVideoDuration(isEditingScript ? editableScript : generatedScript)}秒</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">サイズ:</span>
+                      <span className="text-white ml-2">1080×1920</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
             )}
@@ -1534,6 +1605,28 @@ const SimpleVideoGenerator = () => {
 
 
 
+// 動画時間を計算する関数（45-60秒に固定）
+const calculateVideoDuration = (script) => {
+  if (!script) return 0;
+  
+  let totalDuration = 0;
+  
+  // タイトルスライド: 15秒
+  if (script.title) {
+    totalDuration += 15;
+  }
+  
+  // アイテムスライド: 各15秒（45秒ちょうどになるように）
+  if (script.items && script.items.length > 0) {
+    totalDuration += script.items.length * 15;
+  }
+  
+  // まとめスライド: 15秒
+  totalDuration += 15;
+  
+  return totalDuration;
+};
+
 // 汎用スクリプト表示コンポーネント（簡潔版）
 
 const UniversalScriptDisplay = ({ 
@@ -1613,7 +1706,7 @@ const UniversalScriptDisplay = ({
 
         ) : (
 
-          <div className="text-xl font-bold text-yellow-400">{script.title}</div>
+          <div className="text-xl font-bold text-yellow-400">{typeof script.title === 'string' ? script.title : JSON.stringify(script.title)}</div>
 
         )}
 
@@ -1628,17 +1721,17 @@ const UniversalScriptDisplay = ({
               >
                 変更
               </button>
-            </div>
+      </div>
             <div className="flex items-center space-x-3">
+              <div>
+                <div className="text-sm text-white">{slideImages[0].alt}</div>
+                <div className="text-xs text-gray-400">カテゴリ: {slideImages[0].category}</div>
+              </div>
               <img 
                 src={slideImages[0].url} 
                 alt={slideImages[0].alt} 
                 className="w-16 h-16 object-cover rounded"
               />
-              <div>
-                <div className="text-sm text-white">{slideImages[0].alt}</div>
-                <div className="text-xs text-gray-400">カテゴリ: {slideImages[0].category}</div>
-              </div>
             </div>
           </div>
         )}
@@ -1657,7 +1750,7 @@ const UniversalScriptDisplay = ({
 
           <div className="bg-blue-500/20 px-4 py-2 rounded-lg">
 
-            <span className="text-blue-300 font-bold">{script.videoType}</span>
+            <span className="text-blue-300 font-bold">{typeof script.videoType === 'string' ? script.videoType : JSON.stringify(script.videoType)}</span>
 
           </div>
 
@@ -1683,7 +1776,7 @@ const UniversalScriptDisplay = ({
 
                 <h4 className="font-bold text-green-400 mb-2">📋 動画の説明</h4>
 
-                <p className="text-gray-300">{script.content.description}</p>
+                <p className="text-gray-300">{typeof script.content?.description === 'string' ? script.content.description : JSON.stringify(script.content?.description)}</p>
 
               </div>
 
@@ -1695,7 +1788,7 @@ const UniversalScriptDisplay = ({
 
                 <h4 className="font-bold text-purple-400 mb-2">🎯 構成の狙い</h4>
 
-                <p className="text-gray-300">{script.content.structure}</p>
+                <p className="text-gray-300">{typeof script.content?.structure === 'string' ? script.content.structure : JSON.stringify(script.content?.structure)}</p>
 
               </div>
 
@@ -1840,7 +1933,7 @@ const UniversalScriptDisplay = ({
 
                         {item.description && !item.content && (
 
-                          <p className="text-gray-300">{item.description}</p>
+                          <p className="text-gray-300">{typeof item.description === 'string' ? item.description : JSON.stringify(item.description)}</p>
 
                         )}
 
@@ -1994,37 +2087,6 @@ const UniversalScriptDisplay = ({
 
 
 
-      {/* 動画設定 */}
-
-      <div className="bg-white/5 rounded-lg p-4">
-
-        <h3 className="font-bold text-lg mb-3">⚙️ 動画設定</h3>
-
-        <div className="grid grid-cols-2 gap-4 text-sm">
-
-          <div>
-
-            <span className="text-gray-400">時間:</span>
-
-            <span className="text-white ml-2">{script.duration}秒</span>
-
-          </div>
-
-          <div>
-
-            <span className="text-gray-400">サイズ:</span>
-
-            <span className="text-white ml-2">
-
-              {script.canvas?.width}×{script.canvas?.height}
-
-            </span>
-
-          </div>
-
-        </div>
-
-      </div>
 
       {/* 画像選択モーダル */}
       {showImageSelector && (
@@ -2057,12 +2119,12 @@ const UniversalScriptDisplay = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* タイトルスライド */}
               <div className={`border rounded-lg p-4 ${slideImages[0] ? 'border-green-500 border-4' : ''}`}>
-                <h3 className="font-bold mb-2">
+                <h3 className="font-bold mb-2 text-center">
                   スライド1: タイトル
                   {slideImages[0] && <span className="ml-2 text-green-500">✓</span>}
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">{script.title}</p>
-                <div className="flex space-x-2">
+                <p className="text-sm text-gray-600 mb-3 text-center">{typeof script.title === 'string' ? script.title : JSON.stringify(script.title)}</p>
+                <div className="flex justify-center items-center space-x-2">
                   {slideImages[0] && (
                     <img src={slideImages[0].url} alt={slideImages[0].alt} className="w-16 h-16 object-cover rounded" />
                   )}
@@ -2080,12 +2142,12 @@ const UniversalScriptDisplay = ({
               {/* アイテムスライド */}
               {script.items && script.items.map((item, index) => (
                 <div key={index} className={`border rounded-lg p-4 ${slideImages[index + 1] ? 'border-green-500 border-4' : ''}`}>
-                  <h3 className="font-bold mb-2">
+                  <h3 className="font-bold mb-2 text-center">
                     スライド{index + 2}: アイテム{index + 1}
                     {slideImages[index + 1] && <span className="ml-2 text-green-500">✓</span>}
                   </h3>
-                  <p className="text-sm text-gray-600 mb-3">{item.text || item.main || item.name}</p>
-                  <div className="flex space-x-2">
+                  <p className="text-sm text-gray-600 mb-3 text-center">{typeof (item.text || item.main || item.name) === 'string' ? (item.text || item.main || item.name) : JSON.stringify(item.text || item.main || item.name)}</p>
+                  <div className="flex justify-center items-center space-x-2">
                     {slideImages[index + 1] && (
                       <img src={slideImages[index + 1].url} alt={slideImages[index + 1].alt} className="w-16 h-16 object-cover rounded" />
                     )}
@@ -2101,31 +2163,30 @@ const UniversalScriptDisplay = ({
                 </div>
               ))}
 
-              {/* まとめスライド（強制表示） */}
-              <div className={`border rounded-lg p-4 ${slideImages[script.items ? script.items.length + 1 : 1] ? 'border-green-500 border-4' : ''}`}>
+              {/* まとめスライド（アイテムスライドと同じ形式） */}
+              {script.items && (
+                <div className={`border rounded-lg p-4 ${slideImages[script.items.length + 1] ? 'border-green-500 border-4' : ''}`}>
                 <h3 className="font-bold mb-2">
-                  スライド{script.items ? script.items.length + 2 : 2}: まとめ
-                  {slideImages[script.items ? script.items.length + 1 : 1] && <span className="ml-2 text-green-500">✓</span>}
+                    スライド{script.items.length + 2}: まとめ
+                    {slideImages[script.items.length + 1] && <span className="ml-2 text-green-500">✓</span>}
                 </h3>
-                {/* デバッグ情報 */}
-                <div className="text-xs text-gray-500 mb-2">
-                  デバッグ: アイテム数={script.items?.length || 0}, まとめスライドインデックス={script.items ? script.items.length + 1 : 1}
-                </div>
-                <p className="text-sm text-gray-600 mb-3">この動画がいいと思ったらチャンネル登録・高評価お願いします</p>
+                  <p className="text-sm text-gray-600 mb-3">この動画がいいと思ったらチャンネル登録・高評価お願いします</p>
                 <div className="flex space-x-2">
-                  {slideImages[script.items ? script.items.length + 1 : 1] && (
-                    <img src={slideImages[script.items ? script.items.length + 1 : 1].url} alt={slideImages[script.items ? script.items.length + 1 : 1].alt} className="w-16 h-16 object-cover rounded" />
+                    {slideImages[script.items.length + 1] && (
+                      <img src={slideImages[script.items.length + 1].url} alt={slideImages[script.items.length + 1].alt} className="w-16 h-16 object-cover rounded" />
                   )}
                   <button
                     onClick={() => {
-                      setCurrentSlideIndex(script.items ? script.items.length + 1 : 1);
+                        setCurrentSlideIndex(script.items.length + 1);
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                   >
-                    {slideImages[script.items ? script.items.length + 1 : 1] ? '変更' : '選択'}
+                      {slideImages[script.items.length + 1] ? '変更' : '選択'}
                   </button>
                 </div>
               </div>
+              )}
+
             </div>
 
             <div className="flex justify-end mt-6">

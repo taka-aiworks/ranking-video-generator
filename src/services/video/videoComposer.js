@@ -610,13 +610,13 @@ class VideoComposer {
     const centerX = this.canvas.width / 2;
     const centerY = this.canvas.height / 2;
     
-    // タイトル（自動折り返し、文章を下に移動）
+    // タイトル（上に寄せて中央配置）
     const titleMaxWidth = Math.floor(this.canvas.width * 0.85);
     const titleMaxHeight = Math.floor(this.canvas.height * 0.25);
     this.drawWrappedText(
       videoDesign.title || 'タイトル',
       centerX,
-      centerY - 100,
+      centerY - 250, // もっと上に移動
       70,
       '#212529',
       { bold: true },
@@ -624,9 +624,9 @@ class VideoComposer {
       titleMaxHeight
     );
     
-    // 画像描画（文章に近づける）
+    // 画像描画（下に移動して中央配置）
     const imageX = this.canvas.width * 0.15;
-    const imageY = centerY + 80;
+    const imageY = centerY + 150; // 下に移動
     const imageWidth = this.canvas.width * 0.7;
     const imageHeight = this.canvas.height * 0.35;
     
@@ -670,9 +670,10 @@ class VideoComposer {
     const mainContent = item.main || item.content?.main || item.description || '';
     const details = item.details || item.content?.details || '';
     
+    const centerY = this.canvas.height / 2;
     const textAreaHeight = this.canvas.height / 2;
     const imageX = this.canvas.width * 0.1;
-    const imageY = this.canvas.height / 2;
+    const imageY = this.canvas.height * 0.5; // 下に移動
     const imageWidth = this.canvas.width * 0.8;
     const imageHeight = this.canvas.height / 2;
     const textMaxWidth = Math.floor(this.canvas.width * 0.85);
@@ -680,27 +681,27 @@ class VideoComposer {
     // 🆕 j=0の場合、全内容を表示
     if (subSlideIndex === 0) {
       if (itemText) {
-        // 新フォーマット: item.text（自然な文章）を大きく表示（文章を下に移動）
-        this.drawWrappedText(itemText, centerX, 400, 65, '#000000', { bold: true }, textMaxWidth, 400);
+        // 新フォーマット: item.text（自然な文章）を大きく表示（上に寄せて中央配置）
+        this.drawWrappedText(itemText, centerX, centerY - 250, 65, '#000000', { bold: true }, textMaxWidth, 400);
         
         // 詳細（あれば下部に）
         if (details) {
-          this.drawWrappedText(details, centerX, 750, 35, '#555555', {}, textMaxWidth, 200);
+          this.drawWrappedText(details, centerX, centerY - 50, 35, '#555555', {}, textMaxWidth, 200);
         }
       } else {
-        // 旧フォーマット: title + main + details（文章を下に移動）
-        this.drawWrappedText(itemTitle, centerX, 300, 55, '#000000', { bold: true }, textMaxWidth, 200);
+        // 旧フォーマット: title + main + details（上に寄せて中央配置）
+        this.drawWrappedText(itemTitle, centerX, centerY - 250, 55, '#000000', { bold: true }, textMaxWidth, 200);
         
         if (mainContent) {
-          this.drawWrappedText(mainContent, centerX, 500, 38, '#333333', {}, textMaxWidth, 150);
+          this.drawWrappedText(mainContent, centerX, centerY - 150, 38, '#333333', {}, textMaxWidth, 150);
         }
         
         if (details) {
-          this.drawWrappedText(details, centerX, 700, 35, '#555555', {}, textMaxWidth, 250);
+          this.drawWrappedText(details, centerX, centerY - 50, 35, '#555555', {}, textMaxWidth, 250);
         }
       }
       
-      // 画像は下部に小さめに配置
+      // 画像は上に寄せて配置
       console.log('🖼️ 項目スライド画像描画判定:', {
         subSlideIndex,
         hasOptimizedCanvas: !!slideImage?.optimized?.canvas,
@@ -711,14 +712,14 @@ class VideoComposer {
       
       if (slideImage?.optimized?.canvas) {
         console.log('🎨 最適化済みCanvas画像を描画（項目スライド）');
-        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 50, imageWidth, imageHeight - 100);
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 100, imageWidth, imageHeight - 100);
       } else if (slideImage?.url && typeof slideImage.url === 'string') {
         if (slideImage.url.startsWith('data:')) {
           console.log('🎨 Data URL画像を描画（項目スライド）');
-          await this.drawDataUrlImage(slideImage.url, imageX, imageY + 50, imageWidth, imageHeight - 100);
+          await this.drawDataUrlImage(slideImage.url, imageX, imageY + 100, imageWidth, imageHeight - 100);
         } else {
           console.log('🎨 HTTP URL画像を描画（項目スライド）');
-          await this.drawHttpImage(slideImage.url, imageX, imageY + 50, imageWidth, imageHeight - 100);
+          await this.drawHttpImage(slideImage.url, imageX, imageY + 100, imageWidth, imageHeight - 100);
         }
       } else {
         console.log('⚠️ 画像未選択 - 何も描画しない（項目スライド）');
@@ -780,9 +781,9 @@ class VideoComposer {
     );
     this.drawCTAButtons(centerX, textAreaHeight * 0.75);
     
-    // まとめ画像（画面下部に配置）
+    // まとめ画像（下に移動して配置）
     const imageX = this.canvas.width * 0.15;
-    const imageY = this.canvas.height * 0.6;
+    const imageY = this.canvas.height * 0.5; // 下に移動
     const imageWidth = this.canvas.width * 0.7;
     const imageHeight = this.canvas.height * 0.3;
     

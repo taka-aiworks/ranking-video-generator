@@ -186,8 +186,8 @@ class UniversalContentAnalyzer {
   getRecommendedDurations(format) {
     const recommendations = {
       short: {
-        min: 15,
-        optimal: 40,      // ショート動画の最適時間を40秒に調整
+        min: 45,
+        optimal: 50,      // ショート動画の最適時間を50秒に調整
         max: 60,
         description: 'TikTok・YouTube Shorts最適化'
       },
@@ -198,8 +198,8 @@ class UniversalContentAnalyzer {
         description: 'YouTube通常動画・収益化対応'
       },
       auto: {
-        min: 15,
-        optimal: 40,      // AI自動判断でも40秒を基準に
+        min: 45,
+        optimal: 50,      // AI自動判断でも50秒を基準に
         max: 60,
         description: 'AI自動判断・最適化'
       }

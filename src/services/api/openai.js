@@ -145,9 +145,14 @@ class OpenAIService {
     // 🎯 修正：ショート動画の場合、60秒を上限にする
     const actualDuration = format === 'short' ? Math.min(duration, 60) : duration; // shortは最大60秒
     
-    // 読み上げ速度を考慮した適切なテキスト量を計算（10文字/秒に変更）
-    const targetCharCount = Math.floor(actualDuration * 10 * 0.8); // さらに短く（0.8倍）
-    const detailsPerItem = Math.floor((targetCharCount - 80) / 3); // タイトルなど80文字を引いて3等分
+    // 45-60秒の動画になるようにアイテム数を調整
+    // 1アイテム = 25-40文字 = 約4-5秒の音声
+    // ショート動画で1分越えそうなら1つアイテム減らす
+    let itemCount = 6; // デフォルト6個
+    if (format === 'short' && actualDuration > 55) {
+      itemCount = 5; // 1分越えそうなら5個に減らす
+    }
+    const detailsPerItem = 30; // 各アイテム30文字程度
 
     const diversityRules = `多様性ルール（厳守）:\n- 各文の主題を必ず変える（例: 指標/時間/確率/頻度/安全/コスト/年齢差/環境/パフォーマンス/ライフハック）\n- 同じ観点の言い換えは禁止（内容重複NG）\n- 数字・時間・%・期間は毎文で異なる具体値を使う\n\n出力条件:\n- 1文25-40文字の自然な日本語\n- 必ず具体的な数字/時間/%/期間を含む\n- 各文は完結した自然な文章（記号や矢印は使わない）`;
 
@@ -165,6 +170,13 @@ class OpenAIService {
       basePrompt = `${basePrompt}\n\n${prompts.generic_deep}`;
     }
 
+    // 動的なアイテム数のJSONテンプレートを生成
+    const itemsArray = Array.from({ length: itemCount }, (_, i) => 
+      `    {
+      "text": "自然な1文（25-40文字、必ず具体的な数字・時間・%入り）"
+    }`
+    ).join(',\n');
+    
     const jsonTemplate = `{
   "title": "",  
   "videoType": "${category}情報",
@@ -179,9 +191,7 @@ class OpenAIService {
     "structure": "基本知識→具体的方法→実践のコツ"
   },
   "items": [
-    {
-      "text": "自然な1文（25-40文字、必ず具体的な数字・時間・%入り）"
-    }
+${itemsArray}
   ]
 }`;
 
@@ -197,10 +207,10 @@ class OpenAIService {
       const category = await this.detectCategory(keyword);
       console.log(`📂 判定された分野: ${category}`);
 
-      // APIなしの場合はモックデータ
+      // APIなしの場合は基本的なフォールバック
       if (!this.apiKey) {
-        console.warn('⚠️ APIキー未設定、実用的モックデータ使用');
-        return this.getRealisticMockData(keyword, category, format, duration);
+        console.warn('⚠️ APIキー未設定、基本的なフォールバック使用');
+        return this.getBasicFallback(keyword, category, format, duration);
       }
 
       // Viteプロキシ経由でAPI呼び出し
@@ -261,6 +271,12 @@ class OpenAIService {
       // タイトルが空の場合はAPIで生成
       if (!result.title || result.title.trim() === '') {
         result.title = await this.generateTitle(keyword, category);
+      }
+
+      // YouTube説明欄を動的に生成
+      if (!result.content || !result.content.description) {
+        result.content = result.content || {};
+        result.content.description = this.generateYouTubeDescription(keyword, category, result);
       }
 
       // 🆕 多様性の後処理：重複・類似の文を間引く
@@ -369,7 +385,50 @@ class OpenAIService {
     }
   }
 
-  // 実用的なモックデータ（分野別）
+  // 基本的なフォールバック（APIキーなし時）
+  getBasicFallback(keyword, category, format, duration) {
+    const spec = format === 'short';
+    const title = `${keyword}について解説`;
+    
+    return {
+      title: title,
+      videoType: `${category}情報`,
+      duration: duration,
+      canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
+      content: {
+        description: `【${keyword}】基本的な情報を解説します。\n\n📝 この動画で学べること\n・${keyword}の基本知識\n・実践的な方法\n・継続のコツ\n\n💡 ${keyword}に興味のある方は必見！\n\n#${keyword} #${category} #情報 #コツ #方法 #実践 #初心者 #解説 #役立つ #おすすめ`,
+        structure: "基本知識→具体的方法→実践のコツ"
+      },
+      items: [
+        {
+          id: 1,
+          name: "基本的な知識",
+          content: {
+            main: `${keyword}についての基本知識`,
+            details: "初心者が知っておくべき基本情報を説明します"
+          }
+        },
+        {
+          id: 2,
+          name: "具体的な方法",
+          content: {
+            main: `${keyword}の実践的な方法`,
+            details: "実際に始める具体的な手順を説明します"
+          }
+        },
+        {
+          id: 3,
+          name: "継続のコツ",
+          content: {
+            main: `${keyword}を続けるための秘訣`,
+            details: "長く続けるためのコツを説明します"
+          }
+        }
+      ]
+    };
+  }
+
+  // 実用的なモックデータ（分野別）- 削除予定
   getRealisticMockData(keyword, category, format, duration) {
     const spec = format === 'short' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
     
@@ -431,7 +490,7 @@ class OpenAIService {
         duration: duration,
         canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
         content: {
-          description: `${keyword}を今日から実践できる形で解説`,
+          description: `【${keyword}】今日から実践できる子育てのコツを3つにまとめて解説します！\n\n📝 この動画で学べること\n・コミュニケーションを深める具体的な方法\n・安心できるルーティンの作り方\n・自己肯定感を育む褒め方のコツ\n\n💡 子育てでお悩みの方は必見！\n\n#子育て #子育てコツ #子育て悩み #子育てママ #子育てパパ #子育て本 #子育てグッズ #子育て食事 #子育てしつけ #子育て教育 #子育て体験談 #育児 #育児コツ #育児悩み #育児グッズ #育児本 #育児方法 #親子関係 #子供との接し方 #子育て動画`,
           structure: "基本→具体→コツ（短時間で続けられる）"
         },
         items: [
@@ -478,7 +537,7 @@ class OpenAIService {
       duration: duration,
       canvas: { width: spec.width, height: spec.height, backgroundColor: "#ffffff" },
       content: {
-        description: `${keyword}について実用的で役立つ情報`,
+        description: `【${keyword}】初心者でも分かりやすく解説！実用的で役立つ情報を3つにまとめました。\n\n📝 この動画で学べること\n・基本的な知識と全体像\n・具体的な実践方法\n・継続するためのコツ\n\n💡 ${keyword}に興味のある方は必見！\n\n#${keyword} #${category} #情報 #コツ #方法 #実践 #初心者 #解説 #役立つ #おすすめ`,
         structure: "基本知識→具体的方法→実践のコツ"
       },
       items: [
@@ -556,6 +615,33 @@ class OpenAIService {
   generateClickableTitle(keyword, category) {
     // シンプルにキーワードをそのまま返す（AIが自由に生成する）
     return keyword;
+  }
+
+  // YouTube説明欄を動的に生成
+  generateYouTubeDescription(keyword, category, result) {
+    const items = result.items || [];
+    const itemNames = items.map(item => item.name || item.title || '内容').slice(0, 3);
+    
+    // カテゴリ別ハッシュタグ
+    const categoryHashtags = {
+      health: ['#健康 #フィットネス #運動 #ダイエット #筋トレ #有酸素運動 #健康管理 #ウェルネス'],
+      money: ['#投資 #節約 #家計 #貯金 #資産運用 #金融 #マネー #お金 #経済 #投資信託'],
+      lifestyle: ['#ライフスタイル #生活 #暮らし #日常 #ライフハック #便利グッズ #生活改善 #暮らし方'],
+      skill: ['#スキル #学習 #教育 #資格 #習い事 #スキルアップ #成長 #自己啓発 #勉強法'],
+      technology: ['#テクノロジー #IT #ガジェット #アプリ #デジタル #プログラミング #AI #最新技術'],
+      food: ['#料理 #レシピ #グルメ #食べ物 #クッキング #食事 #栄養 #フード #美味しい #食生活']
+    };
+
+    const hashtags = categoryHashtags[category] || [`#${keyword} #${category} #情報 #コツ #方法 #実践 #初心者 #解説 #役立つ #おすすめ`];
+    
+    return `【${keyword}】今日から実践できる${category}のコツを${items.length}つにまとめて解説します！
+
+📝 この動画で学べること
+${itemNames.map(name => `・${name}`).join('\n')}
+
+💡 ${keyword}に興味のある方は必見！
+
+${hashtags.join(' ')}`;
   }
 
   // 後方互換性
