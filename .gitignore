@@ -20,3 +20,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Irasutoya images (large files)
+public/images/irasutoya/
