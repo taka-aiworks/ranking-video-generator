@@ -336,7 +336,7 @@ class VideoComposer {
   }
 
   // 🚨 修正：画像付き動画生成（オブジェクト形式対応）
-  async generateVideoWithImages(videoDesign, slideImages, onProgress) {
+  async generateVideoWithImages(videoDesign, slideImages, onProgress, options = {}) {
     console.log('🖼️ 画像データ受信検証:', {
       slideImagesType: typeof slideImages,
       isArray: Array.isArray(slideImages),
@@ -394,7 +394,7 @@ class VideoComposer {
       
       console.log('🔴 録画処理開始');
       // 🎯 修正：実際の動画時間で録画開始
-      const recording = this.startRecording(totalDuration);
+      const recording = this.startRecording(totalDuration, options);
       console.log('✅ MediaRecorder開始完了');
       
       console.log('📋 詳細スライド計画:', {

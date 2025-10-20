@@ -1,5 +1,6 @@
 // src/components/ImageSelector.jsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import irasutoyaService from '../services/media/irasutoyaService.js';
 import localImageService from '../services/media/localImageService.js';
 
@@ -111,9 +112,9 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      <div className="bg-white rounded-xl p-6 max-w-4xl w-[94vw] md:w-auto max-h-[80vh] overflow-y-auto shadow-2xl">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">🎨 画像選択: {keyword}</h2>
           <button
@@ -282,7 +283,8 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -9,6 +9,152 @@ class OpenAIService {
     this.model = API_CONFIG.openai.model;
   }
 
+  // === Historical figure detection (lightweight, offline-safe) ===
+  isLikelyPersonName(keyword) {
+    if (!keyword || typeof keyword !== 'string') return false;
+    const k = keyword.trim();
+    if (k.length === 0) return false;
+    // Heuristics:
+    // - Contains middle dot or space separating tokens (e.g., "坂本 龍馬", "フローレンス・ナイチンゲール")
+    // - Two or more Kanji clusters possibly separated by space/・
+    // - Latin name with a space (e.g., "Albert Einstein")
+    const hasSeparator = /[・·・\s]/.test(k);
+    const latinFullName = /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(k);
+    const kanjiName = /[一-龥]{2,}(?:[・\s][一-龥]{1,})+/.test(k);
+    const katakanaName = /[ァ-ヴー]{2,}(?:[・\s][ァ-ヴー]{2,})+/.test(k);
+    // Dynamic name hints from localStorage (comma-separated or JSON array), with safe fallback
+    const defaultHints = [
+      '徳川','織田','豊臣','聖徳','紫式部','清少納言','坂本','西郷','渋沢','与謝野','夏目',
+      '孔子','韓非','プラトン','アリストテレス','ナポレオン','リンカーン','キュリー','エジソン','テスラ','ダ・ヴィンチ','ナイチンゲール'
+    ];
+    let dynamicHints = [];
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('historical_name_hints') : null;
+      if (raw) {
+        if (raw.trim().startsWith('[')) dynamicHints = JSON.parse(raw);
+        else dynamicHints = raw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } catch (_) { /* ignore parse errors */ }
+    const allHints = (Array.isArray(dynamicHints) && dynamicHints.length > 0) ? dynamicHints : defaultHints;
+    const escaped = allHints
+      .filter(v => typeof v === 'string' && v.trim().length > 0)
+      .map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const hintsRegex = escaped.length ? new RegExp(`(${escaped.join('|')})`, 'u') : null;
+    return (
+      latinFullName ||
+      kanjiName ||
+      katakanaName ||
+      (hasSeparator && /[\p{L}\p{Script=Han}\p{Script=Katakana}]/u.test(k)) ||
+      (hintsRegex ? hintsRegex.test(k) : false)
+    );
+  }
+
+  // === Historical figure prompt builders ===
+  buildHistoricalSystemPrompt() {
+    return (
+      'あなたは日本語の教育系YouTube台本ライターです。対象は小学生〜社会人。\n\n' +
+      '【重要】人物の実際の業績を具体的に説明:\n' +
+      '- 何をしたか: 具体的な数字・年代・場所を含めて説明（例: 「604年に十七条憲法を制定」）\n' +
+      '- なぜすごいか: 当時の問題をどう解決したかを具体例で説明（例: 「豪族間の争いを減らすため、話し合いを重視する17の原則を作った」）\n' +
+      '- 今でも使える: 現代の具体例で応用を説明（例: 「会社の会議で多数決の前に全員が意見を言う時間を作る」）\n\n' +
+      '制約:\n' +
+      '- 各スライドは120〜180文字、2〜3文で完結\n' +
+      '- 「すごい」「重要」「偉大」などの抽象語は禁止\n' +
+      '- 具体的な業績→問題解決→現代への応用の流れで書く\n' +
+      '- 小学生でも「あ、これ知ってる！」と思える身近な例を必ず入れる\n' +
+      '- 出力は指定のJSONのみ'
+    );
+  }
+
+  buildHistoricalUserPrompt(name, format, duration) {
+    const spec = format === 'medium' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+    const dur = Math.min(Math.max(180, duration || 240), 360); // clamp 180-360s
+    return (
+`${name}について、小学生でもわかる「今でも使える考え方・方法」を具体例で説明する動画台本を作成してください。\n\n【重要】${name}の実際の業績から「今でも使える考え方・方法」を抽出:\n- 何をしたか（具体的な業績・作品・発明・改革など）\n- なぜそれがすごいのか（当時の問題をどう解決したか）\n- 今でも使える考え方・方法（現代の具体例で説明）\n\n制約:\n- 各items[].textは120〜180文字、2〜3文\n- 「すごい」「重要」「偉大」などの抽象語は禁止\n- ${name}の実際の業績を基に説明\n- 小学生でも「あ、これ知ってる！」と思える身近な例を必ず入れる\n\n出力(JSON):\n{\n  "title": "${name}｜今でも使える考え方・方法",\n  "videoType": "解説",\n  "duration": ${dur},\n  "canvas": { "width": ${spec.width}, "height": ${spec.height}, "backgroundColor": "#ffffff" },\n  "content": {\n    "description": "${name}の業績から「今でも使える考え方・方法」を具体例で解説。昔の知恵が現代でも役立つ理由を小学生でもわかるように説明します。",\n    "structure": "業績①→業績②→業績③→考え方①→考え方②→考え方③→現代への応用→まとめ"\n  },\n  "items": [\n    { "type": "item", "text": "業績①: ${name}の具体的な業績。年代・数字・場所を含め、当時の背景と問題を一言で説明。例: 「604年に十七条憲法を制定。豪族間の争いが絶えない中、話し合いを重視する17の原則を作った。」" },\n    { "type": "item", "text": "業績②: ${name}が解決した問題。何をどうやって解決したか、結果も含める。例: 「冠位十二階で実力主義を導入。家柄だけで決まっていた地位を、能力で決める仕組みに変えた。」" },\n    { "type": "item", "text": "業績③: ${name}の代表的な作品・発明・改革。何が新しかったか、どう変わったかを説明。例: 「遣隋使を派遣し、中国から最新技術を学んだ。仏教・建築・行政システムを取り入れた。」" },\n    { "type": "item", "text": "考え方①: ${name}の思考法・仕事術。観察→仮説→実行→検証の流れなど、再現可能な手順を説明。例: 「問題を観察→原因を特定→解決策を試す→結果を確認。この流れで改革を進めた。」" },\n    { "type": "item", "text": "考え方②: ${name}の問題解決法。困難な状況をどう乗り越えたかを具体例で説明。例: 「反対派を説得するため、まず小さな成功例を作り、効果を見せてから全体に広げた。」" },\n    { "type": "item", "text": "考え方③: ${name}の学習法・成長法。どうやって能力を身につけたかを説明。例: 「中国の書物を読み、現地の専門家に学び、実際に試して失敗から学んだ。」" },\n    { "type": "item", "text": "現代への応用: ${name}の考え方を今の生活・仕事・勉強にどう活かせるか。具体的な行動例を提示。例: 「会議で多数決の前に全員が意見を言う時間を作る。これで見落としを減らせる。」" },\n    { "type": "summary", "text": "まとめ: ${name}の知恵は今でも使える。今日から試せる具体的な方法を一つ提案し、視聴者の次の一歩を促す。例: 「${name}の『話し合い重視』は今でも使える。明日の会議で全員の意見を聞いてから決めてみよう。」" }\n  ]\n}`
+    );
+  }
+
+  // === API-based person detection (prefer this when API key is available) ===
+  async detectPersonName(keyword) {
+    if (!this.apiKey) return null; // indicate not attempted
+    try {
+      const response = await fetch('/api/openai/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: 'You are a classification function. Answer only with one token: PERSON or OTHER.' },
+            { role: 'user', content: `Is the following query a historical figure or a person name? Reply PERSON or OTHER.\n\nQuery: "${keyword}"` }
+          ],
+          max_tokens: 2,
+          temperature: 0
+        })
+      });
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      const data = await response.json();
+      const content = (data.choices?.[0]?.message?.content || '').trim().toUpperCase();
+      if (content.includes('PERSON')) return true;
+      if (content.includes('OTHER')) return false;
+      return null;
+    } catch (e) {
+      console.warn('⚠️ detectPersonName API検知失敗、ヒューリスティックにフォールバック:', e?.message || e);
+      return null;
+    }
+  }
+
+  // === Historical output validator ===
+  validateHistoricalResult(result) {
+    try {
+      if (!result || !Array.isArray(result.items)) return { ok: false, reason: 'no_items' };
+      const items = result.items;
+      if (items.length !== 8) return { ok: false, reason: 'items_count' };
+      const banned = ['大切', 'すごい', '最高', '素晴らしい', '感動', 'びっくり', 'ヤバい'];
+      const sentenceCount = (text) => {
+        const parts = (text || '').split(/[。\.\!\?]/).filter(s => s.trim().length > 0);
+        return parts.length;
+      };
+      for (const it of items) {
+        const text = (it && (it.text || it.content?.main || it.name)) || '';
+        const len = [...text].length;
+        const sc = sentenceCount(text);
+        if (len < 120 || len > 180) return { ok: false, reason: 'length', value: len };
+        if (sc < 2 || sc > 3) return { ok: false, reason: 'sentences', value: sc };
+        if (banned.some(w => text.includes(w))) return { ok: false, reason: 'banned' };
+      }
+      return { ok: true };
+    } catch (_e) {
+      return { ok: false, reason: 'exception' };
+    }
+  }
+
+  async refineHistoricalDesign(name, draft) {
+    if (!this.apiKey) return draft;
+    try {
+      const system = this.buildHistoricalSystemPrompt();
+      const user = `次のJSONを制約に合わせて厳密に修正して返してください。JSONのみを出力。\n\n制約:\n- itemsは8件、各120〜180文字、2〜3文\n- 抽象語（大切/すごい/最高/素晴らしい 等）禁止\n- 構成順: 生涯/業績/業績/方法/誤解/学び/限界/まとめ\n\n対象:${name}\n\nJSON:\n${JSON.stringify(draft)}`;
+      const response = await fetch('/api/openai/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
+          max_tokens: 4000,
+          temperature: 0.1,
+          top_p: 0.6
+        })
+      });
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonString = jsonMatch ? jsonMatch[0] : content;
+      return JSON.parse(jsonString);
+    } catch (_e) {
+      return draft;
+    }
+  }
+
   // 🆕 キーワード生成用のcreateCompletionメソッド追加
   async createCompletion(options) {
     if (!this.apiKey) {
@@ -203,9 +349,17 @@ ${itemsArray}
     console.log(`🎯 実用的AI生成開始: ${keyword}`);
 
     try {
-      // 分野判定
-      const category = await this.detectCategory(keyword);
-      console.log(`📂 判定された分野: ${category}`);
+      // 人名ルート優先（API→ヒューリスティック）
+      let apiPerson = await this.detectPersonName(keyword);
+      const isPerson = apiPerson === null ? this.isLikelyPersonName(keyword) : apiPerson;
+      let category = 'product';
+      if (isPerson) {
+        category = 'historical_figure';
+      } else {
+        // 通常分野判定
+        category = await this.detectCategory(keyword);
+      }
+      console.log(`📂 判定: ${isPerson ? 'historical_figure' : category}`);
 
       // APIなしの場合は基本的なフォールバック
       if (!this.apiKey) {
@@ -214,9 +368,6 @@ ${itemsArray}
       }
 
       // Viteプロキシ経由でAPI呼び出し
-      const prompt = this.getCategoryPrompt(keyword, category, format, duration);
-      console.log('🔍 生成されたプロンプト:', prompt.substring(0, 200) + '...');
-      
       const response = await fetch('/api/openai/chat/completions', {
         method: 'POST',
         headers: {
@@ -224,7 +375,10 @@ ${itemsArray}
         },
         body: JSON.stringify({
           model: this.model,
-          messages: [
+          messages: isPerson ? [
+            { role: 'system', content: this.buildHistoricalSystemPrompt() },
+            { role: 'user', content: this.buildHistoricalUserPrompt(keyword, format === 'medium' ? 'medium' : 'medium', Math.max(duration, 180)) }
+          ] : [
             {
               role: 'system',
               content: `あなたは${category}分野の専門家です。ショート動画用の超簡潔で具体的、そして**誰も教えてくれない本当に知りたい情報**を提供してください。
@@ -249,11 +403,12 @@ ${itemsArray}
             },
             {
               role: 'user',
-              content: prompt
+              content: this.getCategoryPrompt(keyword, category, format, duration)
             }
           ],
           max_tokens: 4000,
-          temperature: 0.35  // 多少の多様性を許容
+          temperature: isPerson ? 0.2 : 0.35,
+          top_p: isPerson ? 0.7 : 1.0
         })
       });
 
@@ -266,7 +421,7 @@ ${itemsArray}
       
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const jsonString = jsonMatch ? jsonMatch[0] : content;
-      const result = JSON.parse(jsonString);
+      let result = JSON.parse(jsonString);
       
       // タイトルが空の場合はAPIで生成
       if (!result.title || result.title.trim() === '') {
@@ -315,8 +470,20 @@ ${itemsArray}
         itemsCount: result.items?.length,
         sample: result.items?.slice(0, 5)
       });
+
+      // Historical: validate and refine if needed
+      if (isPerson) {
+        let check = this.validateHistoricalResult(result);
+        let attempts = 0;
+        while (!check.ok && attempts < 2) {
+          attempts++;
+          const refined = await this.refineHistoricalDesign(keyword, result);
+          result = refined;
+          check = this.validateHistoricalResult(result);
+        }
+      }
       
-      result.duration = duration;
+      result.duration = isPerson ? Math.max(duration, 180) : duration;
       result.category = category;
       
       console.log(`✅ 実用的AI設計図完成: ${category} - ${result.title}`);
@@ -326,9 +493,14 @@ ${itemsArray}
       console.error('❌ 実用的生成エラー:', error);
       console.error('❌ エラー詳細:', error.message);
       console.error('❌ スタック:', error.stack);
-      const fallbackCategory = this.detectCategoryOffline(keyword);
-      console.warn('⚠️ モックデータにフォールバック:', { keyword, category: fallbackCategory });
-      return this.getRealisticMockData(keyword, fallbackCategory, format, duration);
+      if (this.isLikelyPersonName(keyword)) {
+        console.warn('⚠️ 人名検出時のフォールバック（歴史人物テンプレ）');
+        return this.getHistoricalFallback(keyword, format, Math.max(duration, 180));
+      } else {
+        const fallbackCategory = this.detectCategoryOffline(keyword);
+        console.warn('⚠️ モックデータにフォールバック:', { keyword, category: fallbackCategory });
+        return this.getRealisticMockData(keyword, fallbackCategory, format, duration);
+      }
     }
   }
 
@@ -565,6 +737,32 @@ ${itemsArray}
             details: "習慣化して継続することが成功の鍵です"
           }
         }
+      ]
+    };
+  }
+
+  // Historical figure offline fallback (concise, readable)
+  getHistoricalFallback(name, format, duration) {
+    const spec = format === 'medium' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+    return {
+      title: `${name}｜なぜ今も学ぶ価値があるのか`,
+      videoType: '解説',
+      duration: duration || 240,
+      canvas: { width: spec.width, height: spec.height, backgroundColor: '#ffffff' },
+      content: {
+        description: `${name}の生涯と仕事の核心を、業績・考え方・現代へのヒントに分けてやさしく解説します。`,
+        structure: '生涯要約→代表業績→代表業績→思考法→誤解→現代の学び→限界→まとめ'
+      },
+      category: 'historical_figure',
+      items: [
+        { type: 'item', text: `${name}の生涯は転機の連続でした。出自と基礎修業、転機、活動の広がりを簡潔に振り返ります。誇張は避け、主要な舞台のみを述べます。` },
+        { type: 'item', text: `代表業績①では、何が新しかったのかを短く示します。当時の背景を一言添え、過度な美化は避けます。` },
+        { type: 'item', text: `代表業績②は、どんな課題をどう解決したかを軸に説明します。応用や波及についても簡潔に触れます。` },
+        { type: 'item', text: `思考法/仕事術は、観察→仮説→試作→検証の流れで紹介。小さく試して学ぶ再現可能な手順を示します。` },
+        { type: 'item', text: `よくある誤解を挙げ、なぜ生まれたか、実際はどうかを丁寧に整理します。` },
+        { type: 'item', text: `現代に活きる学びとして、今日から試せる姿勢や手順を一つ提示します。` },
+        { type: 'item', text: `限界/反証として、前提条件や批判点、バイアスに触れ、扱いの注意点を明確にします。` },
+        { type: 'summary', text: `${name}を“天才”ではなく実践の積み重ねとして捉え直し、視聴者の次の一歩を促します。` }
       ]
     };
   }

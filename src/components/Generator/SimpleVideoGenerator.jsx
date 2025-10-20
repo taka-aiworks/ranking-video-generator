@@ -1,4 +1,12 @@
 // src/components/Generator/SimpleVideoGenerator.jsx - 画像切り替え修正版
+// 進行ログオーバーレイ（iPad等でも画面表示）を自動読込
+// 右下に「進行ログ」オーバーレイを常時表示可能に（遅延読込でHMRエラーを回避）
+// 既存のReactインポートにuseEffectが含まれているため、ここではそれを使用
+try {
+  // 動的読み込みは副作用のみ（window.__progressLog 設定）
+  import('../../utils/progressOverlay.js');
+} catch (_) {}
+
 
 
 
@@ -771,8 +779,10 @@ const SimpleVideoGenerator = () => {
       // 目標尺に合わせてナレーション再生速度を微調整（±15%）
       const totalSec = (audioEnhancedDesign.slideAudios || []).reduce((s,a)=> s + (a.duration || 0), 0);
       const actualDuration = Math.round(totalSec);
-      const targetSec = format === 'short' ? 45 : format === 'medium' ? 60 : totalSec;
-      const playbackRate = Math.min(1.15, Math.max(0.85, totalSec / Math.max(10, targetSec)));
+      const targetSec = format === 'short' ? 60 : format === 'medium' ? 300 : totalSec;
+      const minRate = format === 'short' ? 0.5 : 0.85;
+      const maxRate = format === 'short' ? 2.0 : 1.15;
+      const playbackRate = Math.min(maxRate, Math.max(minRate, totalSec / Math.max(10, targetSec)));
 
       // デバッグ: 画像データを確認
       console.log('🎬 動画生成開始 - 画像データ確認:');
@@ -792,7 +802,6 @@ const SimpleVideoGenerator = () => {
           const currentTime = Math.round(totalSec * (videoProgress / 100));
           setStatus(`🎬 動画生成中... ${currentTime}/${actualDuration}秒`);
         },
-
         { narrationPlaybackRate: playbackRate }
 
       );

@@ -1,5 +1,6 @@
 // src/components/SlideImageSelector.jsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import irasutoyaService from '../services/media/irasutoyaService.js';
 import localImageService from '../services/media/localImageService.js';
 
@@ -328,9 +329,9 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-5xl max-h-[85vh] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      <div className="bg-white rounded-xl p-6 max-w-5xl w-[94vw] md:w-auto max-h-[85vh] overflow-y-auto shadow-2xl">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">🖼️ スライド{slideIndex + 1}の画像選択</h2>
           <button
@@ -566,7 +567,8 @@ const SlideImageSelector = ({ slideIndex, slideText, onImageSelect, onClose, cur
               </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
