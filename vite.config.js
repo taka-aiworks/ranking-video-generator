@@ -22,6 +22,7 @@ export default defineConfig(({ command, mode }) => {
     // 開発サーバー設定
     server: {
       port: 5173,
+      host: true, // 外部アクセスを許可
       open: true,
       proxy: {
         '/api/openai': {

@@ -1,5 +1,7 @@
 // src/services/media/irasutoyaService.js
-// いらすとや画像取得サービス（直接URL指定方式）
+// いらすとや画像取得サービス（ローカル画像サーバー使用）
+
+import localImageService from './localImageService.js';
 
 class IrasutoyaService {
   constructor() {
@@ -10,11 +12,100 @@ class IrasutoyaService {
   async fetchImages(keyword, count = 15) {
     console.log('🔍 いらすとや画像取得:', keyword);
     
-    // キーワードに基づいて適切なカテゴリの画像を返す
-    const images = this.getImagesByCategory(keyword, count);
+    try {
+      // ローカル画像サーバーから画像を取得
+      const result = await localImageService.searchImages(keyword, count);
+      
+      if (result.success && result.images.length > 0) {
+        const images = localImageService.normalizeImages(result.images);
+        console.log(`✅ ローカル画像: ${images.length}件を取得`);
+        return images;
+      } else {
+        // ローカル画像が見つからない場合は、フォールバック画像を返す
+        console.log('⚠️ ローカル画像が見つからない - フォールバック画像を使用');
+        return this.getFallbackImages(keyword, count);
+      }
+    } catch (error) {
+      console.error('❌ ローカル画像取得エラー:', error);
+      // エラー時はフォールバック画像を返す
+      return this.getFallbackImages(keyword, count);
+    }
+  }
+
+  // フォールバック画像（ローカル画像が見つからない場合）
+  getFallbackImages(keyword, count) {
+    console.log('🔄 フォールバック画像を生成:', keyword);
     
-    console.log(`✅ ${images.length}件の画像を取得`);
-    return images;
+    // ローカル画像サーバーから全画像を取得してフォールバック
+    return localImageService.getAllImages(count).then(result => {
+      if (result.success && result.images.length > 0) {
+        const images = localImageService.normalizeImages(result.images);
+        console.log(`✅ フォールバック: ローカル画像${images.length}件を使用`);
+        return images.slice(0, count);
+      } else {
+        // 最終フォールバック: プレースホルダー画像
+        const fallbackImages = [];
+        for (let i = 0; i < Math.min(count, 5); i++) {
+          fallbackImages.push({
+            url: this.generatePlaceholderImage(keyword, i),
+            alt: `${keyword}関連画像 ${i + 1}`,
+            source: 'fallback',
+            author: 'システム',
+            category: 'その他'
+          });
+        }
+        return fallbackImages;
+      }
+    }).catch(error => {
+      console.error('❌ フォールバック画像取得エラー:', error);
+      // エラー時はプレースホルダー画像
+      const fallbackImages = [];
+      for (let i = 0; i < Math.min(count, 5); i++) {
+        fallbackImages.push({
+          url: this.generatePlaceholderImage(keyword, i),
+          alt: `${keyword}関連画像 ${i + 1}`,
+          source: 'fallback',
+          author: 'システム',
+          category: 'その他'
+        });
+      }
+      return fallbackImages;
+    });
+  }
+
+  // プレースホルダー画像を生成
+  generatePlaceholderImage(keyword, index) {
+    // キーワードを安全な文字に変換
+    const safeKeyword = keyword.replace(/[^\x00-\x7F]/g, '?'); // 非ASCII文字を?に変換
+    
+    // シンプルなSVG画像を生成（英語のみ）
+    const svg = `
+      <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+        <rect width="400" height="300" fill="#f0f0f0"/>
+        <text x="200" y="150" text-anchor="middle" font-family="Arial" font-size="24" fill="#666">
+          ${safeKeyword || 'Image'}
+        </text>
+        <text x="200" y="180" text-anchor="middle" font-family="Arial" font-size="16" fill="#999">
+          Placeholder ${index + 1}
+        </text>
+      </svg>
+    `;
+    
+    try {
+      return `data:image/svg+xml;base64,${btoa(svg)}`;
+    } catch (error) {
+      console.error('❌ Base64エンコードエラー:', error);
+      // エラー時は最小限のSVGを返す
+      const minimalSvg = `
+        <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+          <rect width="400" height="300" fill="#f0f0f0"/>
+          <text x="200" y="150" text-anchor="middle" font-family="Arial" font-size="24" fill="#666">
+            Image ${index + 1}
+          </text>
+        </svg>
+      `;
+      return `data:image/svg+xml;base64,${btoa(minimalSvg)}`;
+    }
   }
 
   // カテゴリごとの画像マッピング

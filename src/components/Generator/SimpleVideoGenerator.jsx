@@ -25,6 +25,8 @@ import voicevoxService from '../../services/tts/voicevox.js';
 import { useImageIntegration } from '../../hooks/useImageIntegration.js';
 import ImageSelector from '../ImageSelector.jsx';
 import SlideImageSelector from '../SlideImageSelector.jsx';
+import localImageService from '../../services/media/localImageService.js';
+import irasutoyaService from '../../services/media/irasutoyaService.js';
 
 
 
@@ -342,6 +344,13 @@ const SimpleVideoGenerator = () => {
 
       setGeneratedScript(videoDesign);
 
+      setStatus('📝 AI設計図完成！自動で画像を挿入中...');
+
+      setProgress(90);
+
+      // 自動で画像を挿入
+      await autoInsertImages(videoDesign);
+
       setStatus('📝 AI設計図完成！編集してから動画生成できます');
 
       setProgress(100);
@@ -364,7 +373,164 @@ const SimpleVideoGenerator = () => {
 
   }, [keyword, format, integrateImages, isIntegrationEnabled]);
 
+  // === 🖼️ 自動画像挿入関数 ===
+  const autoInsertImages = useCallback(async (videoDesign) => {
+    try {
+      console.log('🖼️ 自動画像挿入開始');
+      
+      const newSlideImages = {};
+      
+      // タイトルスライドの画像を挿入
+      if (videoDesign.title) {
+        const titleImage = await selectImageForSlide(0, videoDesign.title);
+        if (titleImage) {
+          newSlideImages[0] = titleImage;
+          console.log('✅ タイトルスライド画像挿入:', titleImage.alt);
+        }
+      }
+      
+      // アイテムスライドの画像を挿入
+      if (videoDesign.items && videoDesign.items.length > 0) {
+        for (let i = 0; i < videoDesign.items.length; i++) {
+          const item = videoDesign.items[i];
+          const slideText = item.text || item.main || item.name || '';
+          const slideIndex = i + 1;
+          
+          const itemImage = await selectImageForSlide(slideIndex, slideText);
+          if (itemImage) {
+            newSlideImages[slideIndex] = itemImage;
+            console.log(`✅ アイテム${i + 1}スライド画像挿入:`, itemImage.alt);
+          }
+        }
+      }
+      
+      // まとめスライドの画像を挿入
+      const summaryIndex = videoDesign.items ? videoDesign.items.length + 1 : 1;
+      const summaryImage = await selectImageForSlide(summaryIndex, 'この動画がいいと思ったらチャンネル登録・高評価お願いします');
+      if (summaryImage) {
+        newSlideImages[summaryIndex] = summaryImage;
+        console.log('✅ まとめスライド画像挿入:', summaryImage.alt);
+      }
+      
+      // 画像を設定
+      setSlideImages(newSlideImages);
+      console.log('🎉 自動画像挿入完了:', Object.keys(newSlideImages).length, '件');
+      
+    } catch (error) {
+      console.error('❌ 自動画像挿入エラー:', error);
+    }
+  }, []);
 
+  // === 🎯 スライド用画像選択関数 ===
+  const selectImageForSlide = useCallback(async (slideIndex, slideText) => {
+    try {
+      if (!slideText) return null;
+      
+      // カテゴリを判定
+      const category = detectCategoryFromText(slideText);
+      console.log(`🎯 スライド${slideIndex}のカテゴリ判定: ${category}`);
+      
+      // ローカル画像から検索
+      const result = await localImageService.searchImages(category, 50);
+      if (result.success && result.images.length > 0) {
+        const images = localImageService.normalizeImages(result.images);
+        const selectedImage = images[Math.floor(Math.random() * images.length)];
+        console.log(`✅ ローカル画像選択: ${selectedImage.alt}`);
+        return selectedImage;
+      }
+      
+      // フォールバック: いらすとやサービス
+      const keyword = extractKeywordFromSlide(slideText);
+      const fallbackImages = await irasutoyaService.fetchImages(keyword, 10);
+      if (fallbackImages.length > 0) {
+        const selectedImage = fallbackImages[Math.floor(Math.random() * fallbackImages.length)];
+        console.log(`✅ フォールバック画像選択: ${selectedImage.alt}`);
+        return selectedImage;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ 画像選択エラー:', error);
+      return null;
+    }
+  }, []);
+
+  // === 🎯 テキストからカテゴリを判定 ===
+  const detectCategoryFromText = useCallback((text) => {
+    if (!text) return 'その他';
+    
+    const categoryKeywords = {
+      '政治': ['政治', '政治家', '総理大臣', '大臣', '国会', '議会', '選挙', '投票'],
+      'お金': ['お金', '金', '収入', '稼ぐ', '利益', '投資', '株', '貯金', '節約', '家計', '給料', '副業', 'バイト'],
+      '健康': ['健康', '体', '身体', '体調', '病気', '病院', '薬', '治療', '医療', '医師', '看護師'],
+      '運動': ['運動', '筋トレ', 'ジム', 'ランニング', '水泳', 'サイクリング', 'ヨガ', 'フィットネス', 'ダイエット', '痩せる'],
+      '勉強': ['勉強', '学習', '学ぶ', '知識', '受験', '試験', 'テスト', '合格', '英語', '英会話', 'TOEIC', '学校', '大学'],
+      '食べ物': ['食べ物', '料理', 'レシピ', '食事', 'ご飯', 'パン', '果物', '野菜', '肉', '魚', '寿司', 'ピザ', 'ケーキ'],
+      '動物': ['動物', '犬', '猫', '鳥', '魚', 'ハムスター', 'うさぎ', '馬', '牛', '豚', 'ペット'],
+      '家族': ['家族', '子供', '赤ちゃん', '母親', '父親', '祖母', '祖父', '兄弟', '姉妹', '友人', '隣人'],
+      '恋愛': ['恋愛', 'カップル', '愛', '恋', 'デート', '結婚', '結婚式', 'バレンタイン', 'プレゼント'],
+      'テクノロジー': ['パソコン', 'スマホ', 'タブレット', 'インターネット', 'アプリ', 'ソフトウェア', 'プログラミング', 'AI', 'ゲーム'],
+      '交通': ['車', 'バス', '電車', '飛行機', '自転車', 'バイク', '旅行', '休暇', 'パスポート'],
+      '自然': ['自然', '花', '木', '山', '海', '川', '湖', '森', '庭', '公園', '空', '雲', '太陽', '月', '星'],
+      'スポーツ': ['スポーツ', 'サッカー', '野球', 'テニス', 'バスケットボール', 'ゴルフ', '水泳', 'スキー', 'スケート'],
+      'イベント': ['イベント', 'パーティー', '誕生日', 'クリスマス', 'お正月', 'ハロウィン', '結婚式', '卒業式', '祭り', 'コンサート']
+    };
+    
+    const lowerText = text.toLowerCase();
+    
+    for (const [category, keywords] of Object.entries(categoryKeywords)) {
+      for (const keyword of keywords) {
+        if (lowerText.includes(keyword.toLowerCase())) {
+          return category;
+        }
+      }
+    }
+    
+    return 'その他';
+  }, []);
+
+  // === 🔍 スライドからキーワードを抽出 ===
+  const extractKeywordFromSlide = useCallback((slideText) => {
+    if (!slideText) return '汎用';
+    
+    if (slideText.includes('title') || slideText.includes('タイトル')) {
+      return 'タイトル';
+    }
+    
+    if (slideText.includes('まとめ') || slideText.includes('summary') || slideText.includes('チャンネル登録') || slideText.includes('高評価')) {
+      return 'チャンネル登録';
+    }
+    
+    const contentKeywords = {
+      '副業': ['副業', 'バイト', 'アルバイト', '仕事', '働く'],
+      'お金': ['お金', '金', '収入', '稼ぐ', '利益'],
+      '投資': ['投資', '株', '株式', '運用', '資産'],
+      '貯金': ['貯金', '貯蓄', '節約', '家計'],
+      'ビジネス': ['ビジネス', '起業', '経営', '会社'],
+      '健康': ['健康', '体', '身体', '体調'],
+      '運動': ['運動', '筋トレ', 'ジム', 'ランニング'],
+      'ダイエット': ['ダイエット', '痩せる', '体重', '減量'],
+      '勉強': ['勉強', '学習', '学ぶ', '知識'],
+      '受験': ['受験', '試験', 'テスト', '合格'],
+      '英語': ['英語', '英会話', 'TOEIC', '語学'],
+      '料理': ['料理', 'レシピ', '食べ物', '食事'],
+      '掃除': ['掃除', '片付け', '整理', '清潔'],
+      '睡眠': ['睡眠', '寝る', '眠る', '休息'],
+      'ゲーム': ['ゲーム', '遊び', '娯楽', '趣味'],
+      '映画': ['映画', 'ドラマ', '動画', 'エンタメ'],
+      '音楽': ['音楽', '歌', '楽器', 'コンサート']
+    };
+    
+    for (const key in contentKeywords) {
+      for (const term of contentKeywords[key]) {
+        if (slideText.includes(term)) {
+          return key;
+        }
+      }
+    }
+    
+    return '汎用';
+  }, []);
 
   // === 🎤 音声生成ヘルパー関数 ===
   const generateSlideAudios = useCallback(async (videoDesign) => {
@@ -568,6 +734,12 @@ const SimpleVideoGenerator = () => {
       const actualDuration = Math.round(totalSec);
       const targetSec = format === 'short' ? 30 : format === 'medium' ? 60 : totalSec;
       const playbackRate = Math.min(1.15, Math.max(0.85, totalSec / Math.max(10, targetSec)));
+
+      // デバッグ: 画像データを確認
+      console.log('🎬 動画生成開始 - 画像データ確認:');
+      console.log('slideImages:', slideImages);
+      console.log('slideImages keys:', Object.keys(slideImages || {}));
+      console.log('slideImages values:', Object.values(slideImages || {}));
 
       const generatedVideo = await videoComposer.generateVideoWithImages(
 
@@ -1086,14 +1258,7 @@ const SimpleVideoGenerator = () => {
                   <h2 className="text-2xl font-bold">📝 AI生成スクリプト</h2>
 
                 <div className="flex space-x-2">
-                  {/* スライド別画像選択ボタン（復活） */}
-                  <button
-                    onClick={() => setShowSlideImageSelector(true)}
-                    className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg flex items-center space-x-2"
-                  >
-                    <span>🎯</span>
-                    <span>スライド別画像選択</span>
-                  </button>
+                  {/* 手動画像選択ボタンは削除 - 自動で画像が挿入されます */}
 
                     {!isEditingScript ? (
 
@@ -1452,6 +1617,32 @@ const UniversalScriptDisplay = ({
 
         )}
 
+        {/* タイトルスライド画像 */}
+        {slideImages && slideImages[0] && (
+          <div className="mt-4 p-4 bg-white/5 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-gray-300">タイトルスライド画像</span>
+              <button
+                onClick={() => setCurrentSlideIndex(0)}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+              >
+                変更
+              </button>
+            </div>
+            <div className="flex items-center space-x-3">
+              <img 
+                src={slideImages[0].url} 
+                alt={slideImages[0].alt} 
+                className="w-16 h-16 object-cover rounded"
+              />
+              <div>
+                <div className="text-sm text-white">{slideImages[0].alt}</div>
+                <div className="text-xs text-gray-400">カテゴリ: {slideImages[0].category}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
 
@@ -1693,6 +1884,32 @@ const UniversalScriptDisplay = ({
 
                         )}
 
+                        {/* アイテムスライド画像 */}
+                        {slideImages && slideImages[index + 1] && (
+                          <div className="mt-4 p-4 bg-white/5 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-bold text-gray-300">アイテム{index + 1}スライド画像</span>
+                              <button
+                                onClick={() => setCurrentSlideIndex(index + 1)}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                              >
+                                変更
+                              </button>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <img 
+                                src={slideImages[index + 1].url} 
+                                alt={slideImages[index + 1].alt} 
+                                className="w-16 h-16 object-cover rounded"
+                              />
+                              <div>
+                                <div className="text-sm text-white">{slideImages[index + 1].alt}</div>
+                                <div className="text-xs text-gray-400">カテゴリ: {slideImages[index + 1].category}</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
 
                     )}
@@ -1884,13 +2101,17 @@ const UniversalScriptDisplay = ({
                 </div>
               ))}
 
-              {/* まとめスライド */}
+              {/* まとめスライド（強制表示） */}
               <div className={`border rounded-lg p-4 ${slideImages[script.items ? script.items.length + 1 : 1] ? 'border-green-500 border-4' : ''}`}>
                 <h3 className="font-bold mb-2">
                   スライド{script.items ? script.items.length + 2 : 2}: まとめ
                   {slideImages[script.items ? script.items.length + 1 : 1] && <span className="ml-2 text-green-500">✓</span>}
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">まとめ。、、。いいねとチャンネル登録お願いします。</p>
+                {/* デバッグ情報 */}
+                <div className="text-xs text-gray-500 mb-2">
+                  デバッグ: アイテム数={script.items?.length || 0}, まとめスライドインデックス={script.items ? script.items.length + 1 : 1}
+                </div>
+                <p className="text-sm text-gray-600 mb-3">この動画がいいと思ったらチャンネル登録・高評価お願いします</p>
                 <div className="flex space-x-2">
                   {slideImages[script.items ? script.items.length + 1 : 1] && (
                     <img src={slideImages[script.items ? script.items.length + 1 : 1].url} alt={slideImages[script.items ? script.items.length + 1 : 1].alt} className="w-16 h-16 object-cover rounded" />
@@ -1927,7 +2148,7 @@ const UniversalScriptDisplay = ({
             currentSlideIndex === 0 ? script.title :
             currentSlideIndex <= (script.items ? script.items.length : 0) ?
               (script.items[currentSlideIndex - 1]?.text || script.items[currentSlideIndex - 1]?.main || script.items[currentSlideIndex - 1]?.name) :
-            'まとめ。、、。いいねとチャンネル登録お願いします。'
+            'この動画がいいと思ったらチャンネル登録・高評価お願いします'
           }
           currentImage={slideImages[currentSlideIndex]}
           onImageSelect={(slideIndex, image) => {

@@ -457,17 +457,23 @@ class VideoComposer {
         // スライド表示ログを削除（ループ軽減）
         // 表示中は定期的にフレーム再描画 + 発行
         const slideImageLoop = slideImage; // 再利用
+        
+        // スライド描画（画像読み込み完了を待つ）
+        console.log(`🎨 スライド描画開始: ${slideAudio.type} (${i+1}/${totalSlides})`);
+        if (slideAudio.type === 'title') {
+          await this.renderTitleSlide(videoDesign, slideImageLoop);
+        } else if (slideAudio.type === 'item') {
+          const itemIndex = i - 1;
+          const item = videoDesign.items[itemIndex];
+          if (item) await this.renderItemSlide(item, itemIndex + 1, 0, slideImageLoop);
+        } else if (slideAudio.type === 'summary') {
+          console.log('🎨 まとめスライド描画実行');
+          await this.renderSummarySlide(videoDesign, slideImageLoop);
+        }
+        
+        
+        // フレームループ（音声時間まで）
         while (true) {
-          // 再描画（同じスライドを毎フレーム）
-          if (slideAudio.type === 'title') {
-            await this.renderTitleSlide(videoDesign, slideImageLoop);
-          } else if (slideAudio.type === 'item') {
-            const itemIndex = i - 1;
-            const item = videoDesign.items[itemIndex];
-            if (item) await this.renderItemSlide(item, itemIndex + 1, 0, slideImageLoop);
-          } else if (slideAudio.type === 'summary') {
-            await this.renderSummarySlide(videoDesign, slideImageLoop);
-          }
           this.nudgeFrame();
           pumpFrame();
           await new Promise(r => setTimeout(r, frameLoopIntervalMs));
@@ -604,13 +610,13 @@ class VideoComposer {
     const centerX = this.canvas.width / 2;
     const centerY = this.canvas.height / 2;
     
-    // タイトル（自動折り返し）
+    // タイトル（自動折り返し、文章を下に移動）
     const titleMaxWidth = Math.floor(this.canvas.width * 0.85);
     const titleMaxHeight = Math.floor(this.canvas.height * 0.25);
     this.drawWrappedText(
       videoDesign.title || 'タイトル',
       centerX,
-      centerY - 200,
+      centerY - 100,
       70,
       '#212529',
       { bold: true },
@@ -618,17 +624,33 @@ class VideoComposer {
       titleMaxHeight
     );
     
-    // 画像描画
+    // 画像描画（文章に近づける）
     const imageX = this.canvas.width * 0.15;
-    const imageY = centerY + 200;
+    const imageY = centerY + 80;
     const imageWidth = this.canvas.width * 0.7;
-    const imageHeight = 300;
+    const imageHeight = this.canvas.height * 0.35;
     
+    console.log('🖼️ タイトルスライド画像描画判定:', {
+      hasOptimizedCanvas: !!slideImage?.optimized?.canvas,
+      hasUrl: !!slideImage?.url,
+      urlType: slideImage?.url ? (slideImage.url.startsWith('data:') ? 'data' : 'http') : 'none',
+      imageData: slideImage
+    });
+
     if (slideImage?.optimized?.canvas) {
+      console.log('🎨 最適化済みCanvas画像を描画');
       this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
-    } else if (slideImage?.url && typeof slideImage.url === 'string' && slideImage.url.startsWith('data:')) {
-      await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+    } else if (slideImage?.url && typeof slideImage.url === 'string') {
+      // Data URL形式またはHTTP URL形式の画像を描画
+      if (slideImage.url.startsWith('data:')) {
+        console.log('🎨 Data URL画像を描画');
+        await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+      } else {
+        console.log('🎨 HTTP URL画像を描画');
+        await this.drawHttpImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+      }
     } else {
+      console.log('⚠️ 画像未選択 - 何も描画しない');
       // 画像未選択時は何も描画しない（プレースホルダー非表示）
     }
   }
@@ -658,32 +680,48 @@ class VideoComposer {
     // 🆕 j=0の場合、全内容を表示
     if (subSlideIndex === 0) {
       if (itemText) {
-        // 新フォーマット: item.text（自然な文章）を大きく表示
-        this.drawWrappedText(itemText, centerX, 350, 65, '#000000', { bold: true }, textMaxWidth, 400);
+        // 新フォーマット: item.text（自然な文章）を大きく表示（文章を下に移動）
+        this.drawWrappedText(itemText, centerX, 400, 65, '#000000', { bold: true }, textMaxWidth, 400);
         
         // 詳細（あれば下部に）
         if (details) {
-          this.drawWrappedText(details, centerX, 700, 35, '#555555', {}, textMaxWidth, 200);
+          this.drawWrappedText(details, centerX, 750, 35, '#555555', {}, textMaxWidth, 200);
         }
       } else {
-        // 旧フォーマット: title + main + details
-        this.drawWrappedText(itemTitle, centerX, 250, 55, '#000000', { bold: true }, textMaxWidth, 200);
+        // 旧フォーマット: title + main + details（文章を下に移動）
+        this.drawWrappedText(itemTitle, centerX, 300, 55, '#000000', { bold: true }, textMaxWidth, 200);
         
         if (mainContent) {
-          this.drawWrappedText(mainContent, centerX, 450, 38, '#333333', {}, textMaxWidth, 150);
+          this.drawWrappedText(mainContent, centerX, 500, 38, '#333333', {}, textMaxWidth, 150);
         }
         
         if (details) {
-          this.drawWrappedText(details, centerX, 650, 35, '#555555', {}, textMaxWidth, 250);
+          this.drawWrappedText(details, centerX, 700, 35, '#555555', {}, textMaxWidth, 250);
         }
       }
       
       // 画像は下部に小さめに配置
+      console.log('🖼️ 項目スライド画像描画判定:', {
+        subSlideIndex,
+        hasOptimizedCanvas: !!slideImage?.optimized?.canvas,
+        hasUrl: !!slideImage?.url,
+        urlType: slideImage?.url ? (slideImage.url.startsWith('data:') ? 'data' : 'http') : 'none',
+        imageData: slideImage
+      });
+      
       if (slideImage?.optimized?.canvas) {
-        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 100, imageWidth, imageHeight - 150);
-      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
-        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 100, imageWidth, imageHeight - 150);
+        console.log('🎨 最適化済みCanvas画像を描画（項目スライド）');
+        this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 50, imageWidth, imageHeight - 100);
+      } else if (slideImage?.url && typeof slideImage.url === 'string') {
+        if (slideImage.url.startsWith('data:')) {
+          console.log('🎨 Data URL画像を描画（項目スライド）');
+          await this.drawDataUrlImage(slideImage.url, imageX, imageY + 50, imageWidth, imageHeight - 100);
+        } else {
+          console.log('🎨 HTTP URL画像を描画（項目スライド）');
+          await this.drawHttpImage(slideImage.url, imageX, imageY + 50, imageWidth, imageHeight - 100);
+        }
       } else {
+        console.log('⚠️ 画像未選択 - 何も描画しない（項目スライド）');
         // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
     } else if (subSlideIndex === 1 && mainContent) {
@@ -691,8 +729,14 @@ class VideoComposer {
       this.drawWrappedText(mainContent, centerX, textAreaHeight * 0.7, 40, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.6));
       if (slideImage?.optimized?.canvas) {
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
-      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
-        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      } else if (slideImage?.url && typeof slideImage.url === 'string') {
+        // Data URL形式またはHTTP URL形式の画像を描画
+        if (slideImage.url.startsWith('data:')) {
+          await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+        } else {
+          // HTTP URL形式の画像を描画
+          await this.drawHttpImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+        }
       } else {
         // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
@@ -701,8 +745,14 @@ class VideoComposer {
       this.drawWrappedText(details, centerX, textAreaHeight * 0.7, 38, '#000000', {}, textMaxWidth, Math.floor(textAreaHeight * 0.65));
       if (slideImage?.optimized?.canvas) {
         this.drawActualImage(slideImage.optimized.canvas, imageX, imageY + 30, imageWidth, imageHeight - 60);
-      } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
-        await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+      } else if (slideImage?.url && typeof slideImage.url === 'string') {
+        // Data URL形式またはHTTP URL形式の画像を描画
+        if (slideImage.url.startsWith('data:')) {
+          await this.drawDataUrlImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+        } else {
+          // HTTP URL形式の画像を描画
+          await this.drawHttpImage(slideImage.url, imageX, imageY + 30, imageWidth, imageHeight - 60);
+        }
       } else {
         // 画像未選択時は何も描画しない（プレースホルダー非表示）
       }
@@ -711,37 +761,46 @@ class VideoComposer {
 
   // まとめスライド描画
   async renderSummarySlide(videoDesign, slideImage = null) {
+    console.log('🎨 まとめスライド描画開始:', { slideImage: !!slideImage });
     this.drawWhiteBackground();
     
     const centerX = this.canvas.width / 2;
     const textAreaHeight = this.canvas.height / 2;
     
-    // エンディングCTA
+    // エンディングCTA（文章を下に移動）
     this.drawWrappedText(
       'この動画が良かったら…',
       centerX,
-      textAreaHeight * 0.35,
+      textAreaHeight * 0.5,
       42,
       '#000000',
       { bold: true },
       Math.floor(this.canvas.width * 0.9),
       Math.floor(textAreaHeight * 0.5)
     );
-    this.drawCTAButtons(centerX, textAreaHeight * 0.6);
+    this.drawCTAButtons(centerX, textAreaHeight * 0.75);
     
-    // まとめ画像
-    const imageX = this.canvas.width * 0.2;
-    const imageY = this.canvas.height * 0.7;
-    const imageWidth = this.canvas.width * 0.6;
-    const imageHeight = 200;
+    // まとめ画像（画面下部に配置）
+    const imageX = this.canvas.width * 0.15;
+    const imageY = this.canvas.height * 0.6;
+    const imageWidth = this.canvas.width * 0.7;
+    const imageHeight = this.canvas.height * 0.3;
     
     if (slideImage?.optimized?.canvas) {
       this.drawActualImage(slideImage.optimized.canvas, imageX, imageY, imageWidth, imageHeight);
-    } else if (slideImage?.url && slideImage.url.startsWith('data:')) {
-      await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+    } else if (slideImage?.url && typeof slideImage.url === 'string') {
+      // Data URL形式またはHTTP URL形式の画像を描画
+      if (slideImage.url.startsWith('data:')) {
+        await this.drawDataUrlImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+      } else {
+        // HTTP URL形式の画像を描画
+        await this.drawHttpImage(slideImage.url, imageX, imageY, imageWidth, imageHeight);
+      }
     } else {
       // 画像未選択時は何も描画しない（プレースホルダー非表示）
+      console.log('⚠️ まとめスライド: 画像未選択');
     }
+    console.log('🎨 まとめスライド描画完了');
   }
 
   // 🧪 デバッグ用オーバーレイ
@@ -791,6 +850,85 @@ class VideoComposer {
     } catch (error) {
       console.error('🚨 画像描画エラー:', error);
       this.drawImagePlaceholder(x, y, width, height, 'エラー');
+    }
+  }
+
+  // HTTP URL画像描画（ローカル画像用）
+  async drawHttpImage(imageUrl, x, y, width, height, options = {}) {
+    try {
+      console.log('🌐 HTTP画像描画開始:', {
+        imageUrl,
+        position: { x, y },
+        size: { width, height },
+        canvas: { width: this.canvas?.width, height: this.canvas?.height }
+      });
+      
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; // CORS対応
+      
+      return new Promise((resolve, reject) => {
+        img.onload = () => {
+          try {
+            console.log('🖼️ 画像読み込み成功、描画開始:', {
+              imageSize: { width: img.width, height: img.height },
+              drawArea: { x, y, width, height }
+            });
+            
+            // 画像サイズに応じて最適化（contain方式）
+            const maxWidth = width;
+            const maxHeight = height;
+            const aspectRatio = img.width / img.height;
+            const targetAspectRatio = maxWidth / maxHeight;
+            
+            let drawX = x;
+            let drawY = y;
+            let drawWidth = maxWidth;
+            let drawHeight = maxHeight;
+            
+            // 画像のアスペクト比に応じて最適なサイズを計算
+            if (aspectRatio > targetAspectRatio) {
+              // 画像が横長の場合、幅を基準に調整
+              drawWidth = maxWidth;
+              drawHeight = maxWidth / aspectRatio;
+              drawY = y + (maxHeight - drawHeight) / 2;
+            } else {
+              // 画像が縦長の場合、高さを基準に調整
+              drawHeight = maxHeight;
+              drawWidth = maxHeight * aspectRatio;
+              drawX = x + (maxWidth - drawWidth) / 2;
+            }
+            
+            // 最小サイズを保証（小さすぎる画像を防ぐ）
+            const minSize = Math.min(maxWidth, maxHeight) * 0.3;
+            if (drawWidth < minSize || drawHeight < minSize) {
+              const scale = minSize / Math.min(drawWidth, drawHeight);
+              drawWidth *= scale;
+              drawHeight *= scale;
+              drawX = x + (maxWidth - drawWidth) / 2;
+              drawY = y + (maxHeight - drawHeight) / 2;
+            }
+            
+            this.ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            console.log('✅ HTTP画像描画完了:', imageUrl);
+            resolve();
+          } catch (error) {
+            console.error('❌ HTTP画像描画エラー:', error);
+            this.drawImagePlaceholder(x, y, width, height, 'HTTP画像エラー');
+            reject(error);
+          }
+        };
+        
+        img.onerror = (error) => {
+          console.error('❌ HTTP画像読み込みエラー:', imageUrl, error);
+          this.drawImagePlaceholder(x, y, width, height, '読み込み失敗');
+          reject(error);
+        };
+        
+        img.src = imageUrl;
+      });
+    } catch (error) {
+      console.error('❌ HTTP画像描画エラー:', error);
+      this.drawImagePlaceholder(x, y, width, height, '描画エラー');
     }
   }
 

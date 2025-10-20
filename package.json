@@ -7,14 +7,20 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "scrape": "node -e \"import('./server/index.js').then(() => { import('./server/irasutoyaScraper.js').then(scraper => { const scraperInstance = new scraper.default(); scraperInstance.initialize().then(() => scraperInstance.scrapeAllCategories().then(() => process.exit(0))); }); })\"",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.10",
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "lucide-react": "^0.544.0",
+    "node-cron": "^3.0.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
@@ -24,6 +30,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
     "cross-env": "^10.1.0",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",

@@ -1,17 +1,39 @@
 // src/components/ImageSelector.jsx
 import React, { useState, useEffect } from 'react';
 import irasutoyaService from '../services/media/irasutoyaService.js';
+import localImageService from '../services/media/localImageService.js';
 
 const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [useLocalImages, setUseLocalImages] = useState(true);
+  const [serverStatus, setServerStatus] = useState('checking');
+  const [metadata, setMetadata] = useState(null);
 
   useEffect(() => {
+    checkServerStatus();
     if (keyword) {
       loadImages();
     }
-  }, [keyword]);
+  }, [keyword, useLocalImages]);
+
+  // サーバーの状態をチェック
+  const checkServerStatus = async () => {
+    try {
+      const health = await localImageService.healthCheck();
+      if (health.status === 'OK') {
+        setServerStatus('online');
+        const meta = await localImageService.getMetadata();
+        setMetadata(meta.metadata);
+      } else {
+        setServerStatus('offline');
+      }
+    } catch (error) {
+      console.log('ローカル画像サーバーがオフラインです');
+      setServerStatus('offline');
+    }
+  };
 
   const loadImages = async () => {
     setLoading(true);
@@ -20,13 +42,29 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
       const simplifiedKeyword = keyword.split(/[のをに、。\s]+/)[0] || keyword;
       console.log(`🔍 キーワード単語化: ${keyword} → ${simplifiedKeyword}`);
       
-      // いらすとやの検索URLを生成
-      const searchUrl = irasutoyaService.generateSearchUrl(simplifiedKeyword);
-      console.log('🔍 いらすとや検索URL:', searchUrl);
-      // 実データ（スクレイピング）を取得
-      const fetched = await irasutoyaService.fetchImages(simplifiedKeyword, 20);
-      console.log('📦 取得した画像データ:', fetched);
-      console.log('📦 最初の画像:', fetched[0]);
+      let fetched = [];
+      
+      if (useLocalImages && serverStatus === 'online') {
+        // ローカル画像から検索
+        console.log('🏠 ローカル画像から検索中...');
+        const result = await localImageService.searchImages(simplifiedKeyword, 20);
+        if (result.success) {
+          fetched = localImageService.normalizeImages(result.images);
+          console.log(`📦 ローカル画像: ${fetched.length}件取得`);
+        }
+      }
+      
+      // ローカル画像が少ない場合は従来のいらすとやサービスを使用
+      if (fetched.length < 5) {
+        console.log('🌐 従来のいらすとやサービスを使用');
+        const searchUrl = irasutoyaService.generateSearchUrl(simplifiedKeyword);
+        console.log('🔍 いらすとや検索URL:', searchUrl);
+        const fallbackImages = await irasutoyaService.fetchImages(simplifiedKeyword, 20);
+        fetched = [...fetched, ...fallbackImages];
+        console.log(`📦 フォールバック画像: ${fallbackImages.length}件追加`);
+      }
+      
+      console.log(`📦 合計画像: ${fetched.length}件`);
       setImages(fetched);
     } catch (error) {
       console.error('❌ 画像読み込みエラー:', error);
@@ -51,6 +89,28 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
     window.open(searchUrl, '_blank');
   };
 
+  // スクレイピングを開始
+  const handleStartScraping = async (categoryName = null) => {
+    try {
+      setLoading(true);
+      const result = await localImageService.startScraping(categoryName);
+      if (result.success) {
+        alert(`スクレイピング完了！${result.newImagesCount || result.results?.length || 0}件の新しい画像を取得しました。`);
+        // 画像を再読み込み
+        await loadImages();
+        // メタデータを更新
+        await checkServerStatus();
+      } else {
+        alert(`スクレイピングエラー: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('スクレイピングエラー:', error);
+      alert('スクレイピングエラーが発生しました。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
@@ -63,6 +123,68 @@ const ImageSelector = ({ keyword, onImageSelect, onClose }) => {
             ×
           </button>
         </div>
+
+        {/* サーバー状態表示 */}
+        <div className="mb-4 p-3 rounded-lg bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium">ローカル画像サーバー:</span>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                serverStatus === 'online' ? 'bg-green-100 text-green-800' :
+                serverStatus === 'offline' ? 'bg-red-100 text-red-800' :
+                'bg-yellow-100 text-yellow-800'
+              }`}>
+                {serverStatus === 'online' ? '🟢 オンライン' :
+                 serverStatus === 'offline' ? '🔴 オフライン' :
+                 '🟡 チェック中'}
+              </span>
+              {metadata && (
+                <span className="text-xs text-gray-600">
+                  (画像数: {metadata.totalImages}件)
+                </span>
+              )}
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="flex items-center space-x-1 text-sm">
+                <input
+                  type="checkbox"
+                  checked={useLocalImages}
+                  onChange={(e) => setUseLocalImages(e.target.checked)}
+                  disabled={serverStatus === 'offline'}
+                  className="rounded"
+                />
+                <span>ローカル画像を優先</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* スクレイピング機能 */}
+        {serverStatus === 'online' && (
+          <div className="mb-4 p-4 bg-green-50 rounded-lg">
+            <p className="text-sm text-gray-600 mb-3">
+              新しい画像をローカルに取得して検索精度を向上させましょう
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleStartScraping(keyword.split(/[のをに、。\s]+/)[0])}
+                disabled={loading}
+                className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg flex items-center space-x-2 text-sm"
+              >
+                <span>📥</span>
+                <span>「{keyword}」をスクレイピング</span>
+              </button>
+              <button
+                onClick={() => handleStartScraping()}
+                disabled={loading}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg flex items-center space-x-2 text-sm"
+              >
+                <span>🚀</span>
+                <span>全カテゴリスレイピング</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* いらすとや検索ボタン */}
         <div className="mb-4 p-4 bg-blue-50 rounded-lg">
